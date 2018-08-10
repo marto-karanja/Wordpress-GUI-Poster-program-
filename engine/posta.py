@@ -63,7 +63,7 @@ class Posta():
                 db.update_short_posts(workload['table'], post['link_no'])
                 # update short content
                 short_content.append(post['link_no'])
-        self.logger.info("%s posts failed out of %s", len(short_content), workload['posts'])
+        self.logger.info("%s posts successfully posted out of %s", (int(workload['posts']) - len(short_content)), workload['posts'])
         # Log short content length
         self.logger.info("****Rejected Short Posts****",)
         for no in short_content:
