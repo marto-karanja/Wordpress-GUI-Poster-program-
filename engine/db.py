@@ -15,9 +15,12 @@ class Db(object):
         cursor = self.conn.cursor(MySQLdb.cursors.DictCursor)
         #create dynamic queries
         # fetch from different databases
-        query  = "select link_no, title, processed_content, category from " + table + " where category=%s and processed = 'False' limit %s"
+        #query  = "select link_no, title, processed_content, category from " + table + " where category=%s and processed = 'False' limit %s"
+        # query where category is not specified
+        query  = "select link_no, title, content, category from " + table + " where processed = 'False' limit %s"
+        self.logger.info((query + ' '+str(int(posts))) )
         try:
-            fetched_posts = cursor.execute(query, (category, int(posts)))
+            fetched_posts = cursor.execute(query, (int(posts),))
         except Exception:
             self.logger.debug("[ERROR STRING]:%s", cursor._last_executed)
             fetched_posts = 0

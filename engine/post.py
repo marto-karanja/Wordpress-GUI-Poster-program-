@@ -26,7 +26,7 @@ class WpPost():
             self.site.call(NewPost(post))
         except Exception:
             # log exception
-            self.logger.error('Failed to publish post', exc_info=True)
+            self.logger.error('Failed to publish post to : %s',self.url, exc_info=True)
 
         
-        self.logger.debug("%s published", title)
+        self.logger.debug("%s published to %s", title, self.url)

@@ -22,11 +22,11 @@ class Cleaner(object):
         clean_string = pattern.sub(lambda m: rep[re.escape(m.group(0))], dirty_string)
         if dirty_string != clean_string:
             self.logger.warning("Stop words removed")
-        return dirty_string
+        return clean_string
     
     def clean_content(self, dirty_string):
         """Performs additional content formatting"""
-        if len(dirty_string) > 80:
+        if len(dirty_string) > 20:
             dirty_string = self.clean_string(dirty_string)
             return dirty_string
         else:
@@ -37,6 +37,14 @@ class Cleaner(object):
     def clean_title(self, dirty_string):
         """Performs additional string formatting"""
         dirty_string = self.clean_string(dirty_string)
-        welcome_string = 'Order answer: '
-        dirty_string = welcome_string + dirty_string
-        return dirty_string
+        welcome_string = 'Order the answer to: '
+        clean_string = welcome_string + dirty_string
+        return clean_string
+
+    def add_meta_content(self, content, category):
+        """Adds additional meta content to the content string"""
+        clean_string = ""
+        """Add marketing jargon"""
+        meta_content="<table style = 'table-striped table-bordered table-hover' responsive='true'><tr><th>Question</th><td>{question}</td></tr><tr><th>Subject</th><td>{category}</td></tr></table>"
+        clean_string = meta_content.format(question = content, category = str(category[0]))
+        return clean_string

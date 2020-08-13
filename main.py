@@ -30,7 +30,7 @@ def start():
     # get settings from csv file
     settings = {}
     sites =[]
-    with open('settings.csv') as csvfile:
+    with open('1_settings.csv') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             single_setting = {}
