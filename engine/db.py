@@ -1,18 +1,18 @@
 # Db Access Class
-import MySQLdb
+import mysql.connector
 import logging
 
 class Db(object):
     """Db access class"""
     def __init__(self, logger = None):
-        self.conn = MySQLdb.connect(host="localhost", user="kush", passwd="incorrect", db="crawls", charset="utf8")
+        self.conn = mysql.connector.connect(host="localhost", user="kush", passwd="incorrect", db="crawls", charset="utf8")
         self.logger = logger or logging.getLogger(__name__)
         self.logger.debug("Database connection created")
     
     def fetch_posts(self, month=None,year=None, category=None, posts=None, table=None):
         """method to fetch posts"""
         #create cursor object
-        cursor = self.conn.cursor(MySQLdb.cursors.DictCursor)
+        cursor = self.conn.cursor(dictionary=True)
         #create dynamic queries
         # fetch from different databases
         #query  = "select link_no, title, processed_content, category from " + table + " where category=%s and processed = 'False' limit %s"
@@ -20,13 +20,15 @@ class Db(object):
         query  = "select link_no, title, content, category from " + table + " where processed = 'False' limit %s"
         self.logger.info((query + ' '+str(int(posts))) )
         try:
-            fetched_posts = cursor.execute(query, (int(posts),))
+            cursor.execute(query, (int(posts),))
+            results = cursor.fetchall()
         except Exception:
             self.logger.debug("[ERROR STRING]:%s", cursor._last_executed)
             fetched_posts = 0
         # get the results as a python dictionary
+        fetched_posts = cursor.rowcount
         self.logger.info("Fetched %s posts", fetched_posts)
-        return cursor.fetchall()
+        return results
     
     def update_posts(self, post):
         """update fetched posts"""

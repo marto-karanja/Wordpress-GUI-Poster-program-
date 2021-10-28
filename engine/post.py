@@ -23,10 +23,14 @@ class WpPost():
         }
         post.post_status = 'publish'
         try:
+            # modifying post function to report success or failure
             self.site.call(NewPost(post))
+            self.logger.debug("%s published to %s", title, self.url)
+            return True
         except Exception:
             # log exception
             self.logger.error('Failed to publish post to : %s',self.url, exc_info=True)
+            return False;
 
         
-        self.logger.debug("%s published to %s", title, self.url)
+        

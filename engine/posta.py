@@ -11,9 +11,10 @@ class Posta():
     def __init__(self, settings, logger = None):
         self.settings = settings
         # get logger object
-        self.logger = logger or logging.getLogger(__name__)
-        
+        self.logger = logger or logging.getLogger(__name__)        
         return
+
+
     def main(self):
         """main method"""
         # get settings object
@@ -29,7 +30,7 @@ class Posta():
         db = Db()
         self.logger.debug("Finished setting up database connection")
         # initialize posting class
-        site = WpPost(workload['site'] +'/xmlrpc.php', 'kush', 'incorrect0727531915')
+        site = WpPost(workload['site'] +'/xmlrpc.php', 'username', 'password')
         # initialize cleaner
         cleaner = Cleaner()
         posts = db.fetch_posts( posts = workload['posts'], table = workload['table'] )
