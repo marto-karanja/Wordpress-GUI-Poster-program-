@@ -26,7 +26,7 @@ class Cleaner(object):
     
     def clean_content(self, dirty_string):
         """Performs additional content formatting"""
-        if len(dirty_string) > 20:
+        if len(dirty_string) > 600:
             dirty_string = self.clean_string(dirty_string)
             return dirty_string
         else:
@@ -37,9 +37,9 @@ class Cleaner(object):
     def clean_title(self, dirty_string):
         """Performs additional string formatting"""
         dirty_string = self.clean_string(dirty_string)
-        welcome_string = 'Order the answer to: '
-        clean_string = welcome_string + dirty_string
-        return clean_string
+        #welcome_string = 'Order the answer to: '
+        #clean_string = welcome_string + dirty_string
+        return dirty_string
 
     def add_meta_content(self, content, category):
         """Adds additional meta content to the content string"""

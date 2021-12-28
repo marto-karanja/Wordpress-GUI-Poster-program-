@@ -30,7 +30,7 @@ class Posta():
         db = Db()
         self.logger.debug("Finished setting up database connection")
         # initialize posting class
-        site = WpPost(workload['site'] +'/xmlrpc.php', 'username', 'password')
+        site = WpPost(workload['site'] +'xmlrpc.php', workload['username'], workload['password'])
         # initialize cleaner
         cleaner = Cleaner()
         posts = db.fetch_posts( posts = workload['posts'], table = workload['table'] )
@@ -52,7 +52,7 @@ class Posta():
                 site.publish_post(title, content, category)
                 self.logger.info("Post No: [%s] published", post['link_no'])
                 # slow down script for one minute to reduce hitting server rate limiter
-                time.sleep(100)
+                time.sleep(2)
                 self.logger.info("Script paused execution for 60 secs")
                 # update published table
                 published = {}

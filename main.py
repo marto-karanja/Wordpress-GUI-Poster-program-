@@ -30,7 +30,7 @@ def start():
     # get settings from csv file
     settings = {}
     sites =[]
-    with open('1_settings.csv') as csvfile:
+    with open('tempsettings.csv') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             single_setting = {}
@@ -38,6 +38,8 @@ def start():
             single_setting['posts'] = row['posts']
             single_setting['category'] = row['category']
             single_setting['table'] = row['table']
+            single_setting['username'] = row['username']
+            single_setting['password'] = row['password']
             #single_setting['year'] = row['year']
             sites.append(single_setting)
     settings ['workload'] = sites
