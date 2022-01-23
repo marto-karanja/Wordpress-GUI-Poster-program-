@@ -63,6 +63,21 @@ class Db(object):
             self.logger.warning("Post No: [%s] was not updated to the website due to an insert error", post_no)
             self.logger.error('Problem with update operation', exc_info=True)
             return False
+
+    def fetch_tables(self):
+        query = "SHOW TABLES LIKE '%_content'";
+        cursor = self.conn.cursor()
+        # run the query
+
+        try:
+            cursor.execute(query)
+            results = cursor.fetchall()
+            self.conn.commit()
+            self.logger.debug("Fetching database tables")
+        except:
+            self.conn.rollback()
+            self.logger.error("Unable to fetch database tabkles")
+        return results
                 
     def close_conn(self):
         self.conn.close()

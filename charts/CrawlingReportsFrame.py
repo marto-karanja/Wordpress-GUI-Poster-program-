@@ -7,7 +7,7 @@ from matplotlib.backends.backend_wxagg import (
     FigureCanvasWxAgg as FigureCanvas,
     NavigationToolbar2WxAgg as NavigationToolbar)
 
-import seaborn
+import seaborn as sns
 
 
 # class MyPlot
@@ -22,6 +22,7 @@ class MyPlot(wx.Panel):
         wx.Panel.__init__(self, parent, id=id, **kwargs)
 
         #------------
+        sns.set()
         
         self.figure = mpl.figure.Figure(dpi=dpi, figsize=(2, 2))
 
