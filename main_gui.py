@@ -5,11 +5,14 @@ import csv
 import wx.adv
 import wx.html
 import wx.lib.inspection
+import logging
 import threading
 import time
 from queue import Queue
+from datetime import date
 from sys import maxsize
 from engine.db import Db
+from engine.posta import Posta
 
 
 
@@ -18,10 +21,15 @@ from engine.gui_grids import GenericTable
 
 class PostaPanel(wx.Panel):
     #----------------------------------------------------------------------
-    def __init__(self, parent, tables):
+    def __init__(self, parent, tables, logger = None):
         wx.Panel.__init__(self, parent)
         self.table_names = [x[0] for x in tables ]
         self.wildcard = "Setting files (*.csv)|*.csv|All files (*.*)|*.*"
+
+        # get a logger
+        self.logger = logger or logging.getLogger(__name__) 
+        self.posta = Posta()
+        self.active_threads = []  
 
 
                
@@ -100,8 +108,8 @@ class PostaPanel(wx.Panel):
         self.top_horizontal_sizer.Add(self.top_right_vertical_sizer, 1, flag = wx.EXPAND)
 
         #-----
-        self.bottom_left_vertical_sizer.Add(self.logTxtField, 1, wx.EXPAND | wx.ALL, 5)
-        self.bottom_right_vertical_sizer.Add(self.reportTxtField, 1, wx.EXPAND | wx.ALL, 5)
+        self.bottom_left_vertical_sizer.Add(self.reportTxtField, 1, wx.EXPAND | wx.ALL, 5)
+        self.bottom_right_vertical_sizer.Add(self.logTxtField, 1, wx.EXPAND | wx.ALL, 5)
         
         self.bottom_horizontal_sizer.Add(self.bottom_left_vertical_sizer,1,flag = wx.EXPAND | wx.ALL)
         self.bottom_horizontal_sizer.Add(self.bottom_right_vertical_sizer ,2,flag = wx.EXPAND | wx.ALL)
@@ -139,11 +147,9 @@ class PostaPanel(wx.Panel):
     def createGrid(self, grid, data = None):
         self.grid = wx.grid.Grid(grid)
         
-        #self.grid.SetMinSize((-1, 250))
-        #self.grid.SetVirtualSize((-1, 250))
+
         self.grid.ShowScrollbars(wx.SHOW_SB_NEVER,wx.SHOW_SB_DEFAULT)
-        #
-        #self.grid.SetVirtualSize(600, 400)
+      
         
         if data is None:
             data = [["https://onlinetutorglobal.com/", "***********", "***********", "**********", "1", "********" ],["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ],["********", "***********", "***********", "***********", "", "***********" ],["********", "***********", "***********", "***********", "", "***********" ],["********", "***********", "***********", "***********", "", "***********" ]]
@@ -174,12 +180,38 @@ class PostaPanel(wx.Panel):
 
     #-------------------------------------------------------------------
     def beginPosting(self, evt):
-        print(self.data_table.data)
+        self.logger.debug(self.data_table.data)
+
+        # launch threads 
+        #self.order_queue = Queue(maxsize = 100)
+        self.quit_event = threading.Event()
+
+        for site in self.data_table.data:
+
+            single_setting = {}
+            single_setting['site'] = site[0]
+            single_setting['posts'] = site[1]
+            # change table to list of tables
+            single_setting['table'] = "sol_inn_content"
+            single_setting['username'] = site[2]
+            single_setting['password'] = site[3]
+
+            if site[4] == "1":
+
+                self.logger.debug("Beginning posting process.....")
+                #self.posta.post_content(single_setting)
+                # launch threads
+       
+                posta = threading.Thread(target= self.posta.post_threaded_content, args=(single_setting, self.quit_event, self), daemon=True)
+                self.active_threads.append(posta)
+                posta.start()
+
 
 
     #-------------------------------------------------------------------
     def stopPosting(self, evt):
-        pass
+        self.log_message_to_report_txt_field("Stopping Bots....")
+        self.quit_event.set()
 
     #-------------------------------------------------------------------
     def schedulePosts(self, evt):
@@ -212,6 +244,7 @@ class PostaPanel(wx.Panel):
             #csv_data = tuple(csv_data)
             # assign a new table to the grid
             self.grid.ClearGrid()
+            self.grid.ForceRefresh()
             #print(self.data_table.data)
             self.data_table.data = None
             #print(self.data_table.data)
@@ -220,21 +253,7 @@ class PostaPanel(wx.Panel):
 
             msg = wx.grid.GridTableMessage(self.data_table,wx.grid.GRIDTABLE_NOTIFY_ROWS_INSERTED,1,  rows_affected)
 
-            #self.scroll_grid.Hide()
-            #self.reportSizer.Detach(self.scroll_grid)
-            #self.scroll_grid.Destroy()
-            #self.grid = None
-            
-            #self.scroll_grid = None
-            # create a new scrolled window
-            #self.scroll_grid = wx.ScrolledWindow(self, -1)
-            #self.scroll_grid.SetScrollbars(1, 1, 600, 400)
 
-
-
-            #self.createGrid(self.scroll_grid, csv_data)
-            #self.grid.SetMaxSize((-1, 400))
-            #self.grid.AutoSize()
             self.grid.GetTable().GetView().ProcessTableMessage(msg)
 
             self.grid.ForceRefresh()
@@ -242,40 +261,23 @@ class PostaPanel(wx.Panel):
 
             self.Layout()
 
-            """self.reportSizer.Layout()
-            self.grid_button_sizer.Layout()
-            self.top_left_vertical_sizer.Layout()
-            self.top_horizontal_sizer.Layout()
-            self.mainSizer.Layout()"""
-            """
-
-
-        
-
-            self.reportSizer.Add(self.scroll_grid, 0, wx.EXPAND | wx.ALL)
-            self.scroll_grid.Fit()
-            self.reportSizer.Fit(self.scroll_grid)
-
-
-            widget = self.grid
-            while widget.GetParent():
-                widget = widget.GetParent()
-                widget.Layout()
-                print("layout")
-                if widget.IsTopLevel():
-                    break
-       
-
-            
-            #self.top_left_vertical_sizer.Add(self.grid_button_sizer)
-            self.Refresh()
-            self.Layout()"""
 
 
 
     #-------------------------------------------------------------------
     def saveSettings(self, evt):
         pass
+
+
+    #------------------------------------------------------------------
+    def log_message_to_txt_field(self, msg):
+        self.logTxtField.AppendText(msg)
+        self.logTxtField.AppendText("\n")
+
+
+    def log_message_to_report_txt_field(self, msg):
+        self.reportTxtField.AppendText(msg)
+        self.reportTxtField.AppendText("\n")
 
 
 
@@ -286,12 +288,14 @@ class PostaPanel(wx.Panel):
 
 class PostaBotFrame(wx.Frame):
     """Whatsapp GUI Frame"""
-    def __init__(self, parent):
+    def __init__(self, parent, logger = None):
         self.title = "Posta posting Bot"
         wx.Frame.__init__(self, parent, -1, self.title, size=(900,700))
         self.createMenuBar()
 
-        self.db = Db()
+        self.logger = logger or logging.getLogger(__name__)
+
+        self.db = Db(self.logger)
         tables = self.db.fetch_tables()
 
         self.createPanel(tables)
@@ -306,7 +310,7 @@ class PostaBotFrame(wx.Frame):
         self.Center(wx.BOTH)
 
     def createPanel(self, table):
-        self.mainPanel = PostaPanel(self, table)
+        self.mainPanel = PostaPanel(self, table, self.logger)
         self.box_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.box_sizer.Add(self.mainPanel, 1, wx.EXPAND)
         self.SetSizer(self.box_sizer)
@@ -472,7 +476,7 @@ cellpadding="0" border="1">
 
 class PostaBotApp(wx.App):
 
-    def OnInit(self):
+    def OnInit(self, logger = None):
         bmp = wx.Image("gui/posta.png").ConvertToBitmap()
         wx.adv.SplashScreen(bmp, wx.adv.SPLASH_CENTRE_ON_SCREEN | wx.adv.SPLASH_TIMEOUT,
                 1000, None, -1)
@@ -484,8 +488,8 @@ class PostaBotApp(wx.App):
 
         #-----------------------------
 
-
-        frame = PostaBotFrame(None)
+        self.logger = logger or logging.getLogger(__name__)   
+        frame = PostaBotFrame(None, self.logger)
         self.locale = wx.GetLocale()
         frame.Show(True)
         self.SetTopWindow(frame)
@@ -509,13 +513,36 @@ class PostaBotApp(wx.App):
         return icons_dir
 
 
+def get_logger():
+    d = date.today()
+    log_file = d.isoformat()
+    log_path = os.getcwd() + "\\logs"
+    print(log_path)
+    logging.basicConfig(
+    format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+    datefmt="'%m/%d/%Y %I:%M:%S %p",
+    handlers=[
+        logging.FileHandler("{0}/{1}.log".format(log_path, log_file)),
+        logging.StreamHandler()
+    ],
+    level = logging.DEBUG)
+
+    logger = logging.getLogger(__name__)
+
+    # get posta object
+    logger.info("...Starting Application...")
+    return logger
+
+
 
 
 #--------------------------------------------------
 
 if __name__ == '__main__':
+
+    logger = get_logger()
     
-    app = PostaBotApp(False)
+    app = PostaBotApp(False, logger)
     #wx.lib.inspection.InspectionTool().Show()
     app.MainLoop()
 

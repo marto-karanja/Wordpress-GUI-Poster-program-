@@ -1,5 +1,7 @@
 import logging
+import wx
 import time
+import threading
 from engine.cleaner import Cleaner
 from engine.db import Db
 from engine.post import WpPost
@@ -8,7 +10,7 @@ from engine.post import WpPost
 
 class Posta():
     """main class"""
-    def __init__(self, settings, logger = None):
+    def __init__(self, settings = None, logger = None):
         self.settings = settings
         # get logger object
         self.logger = logger or logging.getLogger(__name__)        
@@ -78,3 +80,89 @@ class Posta():
         db.close_conn()
         self.logger.info("Closing database connection")
         return
+
+    def post_threaded_content(self, workload, event, window):
+        """main method"""
+        # initialize DB class
+
+        db = Db()
+        self.logger.debug("Finished setting up database connection")
+        self.update_gui(window, msg = "Website [{}] added to queue".format(workload['site']))
+        
+        # initialize posting class
+        site = WpPost(workload['site'] +'xmlrpc.php', workload['username'], workload['password'])
+        # initialize cleaner
+        cleaner = Cleaner()
+        #### To Do
+        ## Modify posts fetching function
+        posts = db.fetch_posts( posts = workload['posts'], table = workload['table'] )
+
+        # update GUI grid
+        #self.update data grid
+        
+        short_content = []
+        # itearate through posts 
+        for count, post in enumerate(posts):
+            # clean post
+            # check if content is long enough
+            
+            if not event.isSet():
+                
+
+                self.logger.debug("Cleaning content: %s", post['link_no'])
+                content = cleaner.clean_content(post['content'])
+                if content:
+                    self.update_gui(window, "Posting post {} of {}. {} remaining".format(count + 1, len(posts), len(posts)-count-1))
+                    self.logger.debug("Cleaning title: %s", post['link_no'])
+                    title = cleaner.clean_title(post['title'])
+                    category = [post['category']]
+                    """Add meta content"""
+                    content = cleaner.add_meta_content(content, category)
+                    # post
+                    site.publish_post(title, content, category)
+                    self.logger.info("Post No: [%s] published", post['link_no'])
+                    # slow down script for one minute to reduce hitting server rate limiter
+
+                    
+                    # update published table
+                    published = {}
+                    published['title'] = title
+                    published['content'] = content
+                    published['link_no'] = post['link_no']
+                    published['website'] = workload['site']
+                    published['table'] = workload['table']
+                    # update db records
+                    db.update_posts(published)
+                    self.logger.debug("Post No: [%s] published and updated", post['link_no'])
+                    print("woop")
+                    msg = "Post No: [{}] published and updated to [{}] - [Thread: {}]".format(post['link_no'],published['website'], threading.currentThread().getName())
+                    self.update_gui(window, msg )
+                    delay = 5
+                    self.logger.info("Script paused execution for {} secs".format(delay))
+                    self.update_gui(window, "Script paused execution for {} secs".format(delay))
+                    time.sleep(delay)
+                else:
+                    # update the short content strings on the db
+                    self.update_gui(window, "Posting {} of {}. {} remaining".format(count, len(posts), len(posts)-count))
+                    self.update_gui(window, "Updating short record string:[{}]".format(post['link_no']))
+                    self.logger.debug("Updating short record string:[%s]",post['link_no'])
+                    db.update_short_posts(workload['table'], post['link_no'])
+                    # update short content
+                    short_content.append(post['link_no'])
+            
+            else:
+                self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
+        self.logger.info("%s short posts found out of %s", (len(short_content)), workload['posts'])
+        self.update_gui(window, "Thread Completed [{}]".format(threading.currentThread().getName()))
+        self.update_gui(window, "[{}] Short posts [{}][{}]".format(len(short_content),threading.currentThread().getName(), published['website']))
+        self.update_gui(window, "[{}] Posts published [{}][{}]".format((len(posts) - len(short_content)),threading.currentThread().getName(), published['website']))
+        # Log short content length
+        self.logger.info("****Rejected Short Posts****",)
+        for no in short_content:
+            self.logger.info("Link No: [%s]",no)
+        db.close_conn()
+        self.logger.info("Closing database connection")
+        return
+
+    def update_gui(self, window, msg):
+        wx.CallAfter(window.log_message_to_txt_field,msg )
