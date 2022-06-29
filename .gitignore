@@ -12,4 +12,4 @@ __pycache__/
 *.pyd
 /output
 /dist
-/twit
+/twit/config.py
