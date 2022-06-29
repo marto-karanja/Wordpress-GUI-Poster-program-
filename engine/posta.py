@@ -2,9 +2,14 @@ import logging
 import wx
 import time
 import threading
+import random
+
+import datetime
+from datetime import datetime
 from engine.cleaner import Cleaner
 from engine.db import Db
 from engine.post import WpPost
+from engine.rest_post import RestPost
 
 
 
@@ -12,6 +17,7 @@ class Posta():
     """main class"""
     def __init__(self, settings = None, logger = None):
         self.settings = settings
+        #self.delay = 15
         # get logger object
         self.logger = logger or logging.getLogger(__name__)        
         return
@@ -68,10 +74,11 @@ class Posta():
                 self.logger.debug("Post No: [%s] published and updated", post['link_no'])
             else:
                 # update the short content strings on the db
-                self.logger.debug("Updating short record string:[%s]",post['link_no'])
+                self.logger.debug("Short string detected and updated in database[%s]",post['link_no'])
                 db.update_short_posts(workload['table'], post['link_no'])
                 # update short content
                 short_content.append(post['link_no'])
+
         self.logger.info("%s short posts found out of %s", (len(short_content)), workload['posts'])
         # Log short content length
         self.logger.info("****Rejected Short Posts****",)
@@ -81,88 +88,394 @@ class Posta():
         self.logger.info("Closing database connection")
         return
 
-    def post_threaded_content(self, workload, event, window):
+    def get_current_time(self):
+        now = datetime.now()
+        return now.strftime("%H:%M:%S")
+
+
+    def post_threaded_content(self, workload, thread_queue, event, window):
         """main method"""
-        # initialize DB class
+
+        #thread_start = self.get_current_time()
+
+        # Dictionary to store results
+        results = {}
+        results['Thead start time'] = self.get_current_time()
+        thread_name = threading.currentThread().getName()
 
         db = Db()
-        self.logger.debug("Finished setting up database connection")
-        self.update_gui(window, msg = "Website [{}] added to queue".format(workload['site']))
+
+        
+        self.logger.debug("Finished setting up database connection for %s", workload['site'])
+        msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
+        self.update_window_reports(window, msg)
         
         # initialize posting class
         site = WpPost(workload['site'] +'xmlrpc.php', workload['username'], workload['password'])
         # initialize cleaner
         cleaner = Cleaner()
         #### To Do
-        ## Modify posts fetching function
-        posts = db.fetch_posts( posts = workload['posts'], table = workload['table'] )
+        ## Modify posts fetching function to return dictionary of multiple tables
+        posts = db.fetch_posts_from_tables( no_of_posts = workload['posts'], tables = workload['table'] )
 
         # update GUI grid
         #self.update data grid
         
         short_content = []
-        # itearate through posts 
-        for count, post in enumerate(posts):
-            # clean post
-            # check if content is long enough
-            
-            if not event.isSet():
+        published_posts = []
+        # itearate through posts
+        total_fetched_posts = 0
+        for table,contents in posts.items():
+            total_fetched_posts = total_fetched_posts + len(contents)
+            for count, post in enumerate(contents):
+                # clean post
+                # check if content is long enough
+                self.logger.debug("Content length: [%s]", post['content_length'])
                 
-
-                self.logger.debug("Cleaning content: %s", post['link_no'])
-                content = cleaner.clean_content(post['content'])
-                if content:
-                    self.update_gui(window, "Posting post {} of {}. {} remaining".format(count + 1, len(posts), len(posts)-count-1))
-                    self.logger.debug("Cleaning title: %s", post['link_no'])
-                    title = cleaner.clean_title(post['title'])
-                    category = [post['category']]
-                    """Add meta content"""
-                    content = cleaner.add_meta_content(content, category)
-                    # post
-                    site.publish_post(title, content, category)
-                    self.logger.info("Post No: [%s] published", post['link_no'])
-                    # slow down script for one minute to reduce hitting server rate limiter
-
+                if not event.isSet():
                     
-                    # update published table
-                    published = {}
-                    published['title'] = title
-                    published['content'] = content
-                    published['link_no'] = post['link_no']
-                    published['website'] = workload['site']
-                    published['table'] = workload['table']
-                    # update db records
-                    db.update_posts(published)
-                    self.logger.debug("Post No: [%s] published and updated", post['link_no'])
-                    print("woop")
-                    msg = "Post No: [{}] published and updated to [{}] - [Thread: {}]".format(post['link_no'],published['website'], threading.currentThread().getName())
-                    self.update_gui(window, msg )
-                    delay = 5
-                    self.logger.info("Script paused execution for {} secs".format(delay))
-                    self.update_gui(window, "Script paused execution for {} secs".format(delay))
-                    time.sleep(delay)
+                    
+                    current_time = self.get_current_time()
+
+                    self.logger.debug("Cleaning content: %s", post['link_no'])
+                    content = cleaner.clean_content(post['content'])
+                    if content:
+                        self.update_gui(window, "{}: [{}-{}] Beginning processing post {} of {}. Post length {}. {} remaining".format(self.get_current_time(), threading.currentThread().getName(), workload['site'], count + 1, len(contents), post['content_length'], len(contents)-count-1))
+                        self.logger.debug("Cleaning title: %s", post['link_no'])
+                        title = ' '.join(content.split()[0:25])
+                        #title = cleaner.clean_title(post['title'])
+                        category = [post['category']]
+                        """Add meta content"""
+                        content = cleaner.add_meta_content(content, category)
+                        # post
+                        if site.publish_post(title, content, category):
+                            
+                            self.logger.info("Post No: [%s] published", post['link_no'])
+                            # slow down script for one minute to reduce hitting server rate limiter
+
+                            
+                            # update published table
+                            published = {}
+                            published['title'] = title
+                            published['content'] = content
+                            published['link_no'] = post['link_no']
+                            published['website'] = workload['site']
+                            
+                            published['table'] = table
+
+                            # append to published list
+                            published_posts.append(post['link_no'])
+
+                            # update db records
+                            db.update_posts(published)
+                            
+                            
+                            msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published['website'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+                            self.logger.debug(msg)
+                            delay = random.randint(0, self.delay)
+                            self.logger.info("Script paused execution for {} secs".format(delay))
+                            self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
+                            time.sleep(delay)
+                        else:
+                            self.logger.debug("Failed to publish [%s] to [%s]", post['link_no'], workload['site'])
+                            
+                            msg = "{}: Post No: [{}] failed to publish [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],workload['site'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+
+                    else:
+                        # update the short content strings on the db
+                        self.update_gui(window, "{}: Short string. Failed to publish [{}]. {} posts remaining".format(self.get_current_time(), post['link_no'], len(contents)-count-1))
+                        #self.update_gui(window, "{}: Updating short record string:[{}]".format(current_time, post['link_no']))
+                        self.logger.debug("Updating short record string:[%s]",post['link_no'])
+                        db.update_short_posts(table, post['link_no'])
+                        # update short content
+                        short_content.append(post['link_no'])
+                
                 else:
-                    # update the short content strings on the db
-                    self.update_gui(window, "Posting {} of {}. {} remaining".format(count, len(posts), len(posts)-count))
-                    self.update_gui(window, "Updating short record string:[{}]".format(post['link_no']))
-                    self.logger.debug("Updating short record string:[%s]",post['link_no'])
-                    db.update_short_posts(workload['table'], post['link_no'])
-                    # update short content
-                    short_content.append(post['link_no'])
-            
-            else:
-                self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
+                    self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
+                    # break out of loop
+                    break
+
+
         self.logger.info("%s short posts found out of %s", (len(short_content)), workload['posts'])
-        self.update_gui(window, "Thread Completed [{}]".format(threading.currentThread().getName()))
-        self.update_gui(window, "[{}] Short posts [{}][{}]".format(len(short_content),threading.currentThread().getName(), published['website']))
-        self.update_gui(window, "[{}] Posts published [{}][{}]".format((len(posts) - len(short_content)),threading.currentThread().getName(), published['website']))
+        results['Short Posts'] = short_content
+        results['Website'] = workload['site']
+        results['Thread Name'] = thread_name
+        results ['Posts Published'] = published_posts
+        thread_completion = datetime.now()
+        thread_completion = thread_completion.strftime("%H:%M:%S")
+        results ['Thread Completion Time'] = thread_completion
+
+        thread_queue.put(results)
+
+        # print out reports
+        self.update_window_reports(window, "**************************")
+        self.update_window_reports(window, "{}: Thread Completed [{}]".format(self.get_current_time(), thread_name))
+        self.update_window_reports(window, "{}: [{}] Short posts [{}][{}]".format(self.get_current_time(), len(short_content),thread_name, workload['site']))
+        self.update_window_reports(window, "{}: [{}] Posts published [{}][{}]".format(self.get_current_time(), len(published_posts),thread_name, workload['site']))
+        self.update_window_reports(window, "{}: [{}] Posts failed to publish [{}][{}]".format(self.get_current_time(), total_fetched_posts - len(published_posts),thread_name, workload['site']))
+        self.update_window_reports(window, "**************************")
         # Log short content length
-        self.logger.info("****Rejected Short Posts****",)
-        for no in short_content:
-            self.logger.info("Link No: [%s]",no)
+  
         db.close_conn()
         self.logger.info("Closing database connection")
         return
 
+    def post_content_rest_method(self, delay, database_obj, workload, thread_queue, event, window ):
+        self.delay = delay
+        results = {}
+        results['Thead start time'] = self.get_current_time()
+        thread_name = threading.currentThread().getName()
+        
+        # initialize posting class
+        site = RestPost(workload['site'], workload['username'], workload['application_password'], self.logger)
+        # initialize cleaner
+        cleaner = Cleaner()
+
+        db = database_obj
+
+        
+        self.logger.debug("Finished setting up database connection for %s", workload['site'])
+        msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
+        self.update_window_reports(window, msg)
+
+        posts = db.fetch_posts_from_tables( no_of_posts = workload['posts'], tables = workload['table'] )
+
+        # update GUI grid
+        #self.update data grid
+        
+        short_content = []
+        published_posts = []
+        # itearate through posts
+        total_fetched_posts = 0
+        for table,contents in posts.items():
+            total_fetched_posts = total_fetched_posts + len(contents)
+            for count, post in enumerate(contents):
+                # clean post
+                # check if content is long enough
+                self.logger.debug("Content length: [%s]", post['content_length'])
+                
+                if not event.isSet():
+                    
+                    
+                    current_time = self.get_current_time()
+
+                    self.logger.debug("Cleaning content: %s", post['link_no'])
+                    content = cleaner.clean_content(post['content'])
+                    if content:
+                        self.update_gui(window, "{}: [{}-{}] Beginning processing post {} of {}. Post length {}. {} remaining".format(self.get_current_time(), threading.currentThread().getName(), workload['site'], count + 1, len(contents), post['content_length'], len(contents)-count-1))
+                        self.logger.debug("Cleaning title: %s", post['link_no'])
+                        title = ' '.join(content.split()[0:25])
+                        #title = cleaner.clean_title(post['title'])
+                        category = [post['category']]
+                        """Add meta content"""
+                        content = cleaner.add_meta_content(content, category)
+                        # post
+                        if site.publish_post(title, content, category):
+                            
+                            self.logger.info("Post No: [%s] published", post['link_no'])
+                            # slow down script for one minute to reduce hitting server rate limiter
+
+                            
+                            # update published table
+                            published = {}
+                            published['title'] = title
+                            published['content'] = content
+                            published['link_no'] = post['link_no']
+                            published['website'] = workload['site']
+                            
+                            published['table'] = table
+
+                            # append to published list
+                            published_posts.append(post['link_no'])
+
+                            # update db records
+                            db.update_posts(published)
+                            
+                            
+                            msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published['website'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+                            self.logger.debug(msg)
+                            delay = random.randint(int(self.delay/2), int(self.delay))
+                            self.logger.info("Script paused execution for {} secs".format(delay))
+                            self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
+                            time.sleep(delay)
+                        else:
+                            self.logger.debug("Failed to publish [%s] to [%s]", post['link_no'], workload['site'])
+                            
+                            msg = "{}: Post No: [{}] failed to publish [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],workload['site'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+
+                    else:
+                        # update the short content strings on the db
+                        self.update_gui(window, "{}: Short string. Failed to publish [{}]. {} posts remaining".format(self.get_current_time(), post['link_no'], len(contents)-count-1))
+                        #self.update_gui(window, "{}: Updating short record string:[{}]".format(current_time, post['link_no']))
+                        self.logger.debug("Updating short record string:[%s]",post['link_no'])
+                        db.update_short_posts(table, post['link_no'])
+                        # update short content
+                        short_content.append(post['link_no'])
+                
+                else:
+                    self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
+                    # break out of loop
+                    break         
+
+
+        self.update_gui(window, "*******************************************************")
+        self.logger.info("%s short posts found out of %s", (len(short_content)), workload['posts'])
+        results['Short Posts'] = short_content
+        results['Website'] = workload['site']
+        results['Thread Name'] = thread_name
+        results ['Posts Published'] = published_posts
+        thread_completion = datetime.now()
+        thread_completion = thread_completion.strftime("%H:%M:%S")
+        results ['Thread Completion Time'] = thread_completion
+
+        thread_queue.put(results)
+
+        # print out reports
+        self.update_window_reports(window, "**************************")
+        self.update_window_reports(window, "{}: Thread Completed [{}]".format(self.get_current_time(), thread_name))
+        self.update_window_reports(window, "{}: [{}] Short posts [{}][{}]".format(self.get_current_time(), len(short_content),thread_name, workload['site']))
+        self.update_window_reports(window, "{}: [{}] Posts published [{}][{}]".format(self.get_current_time(), len(published_posts),thread_name, workload['site']))
+        self.update_window_reports(window, "{}: [{}] Posts failed to publish [{}][{}]".format(self.get_current_time(), total_fetched_posts - len(published_posts),thread_name, workload['site']))
+        self.update_window_reports(window, "**************************")
+        # Log short content length
+  
+        db.close_conn()
+        self.logger.info("Closing database connection")
+        return
+
+
+    def post_category_rest_method(self, delay, database_obj, workload, thread_queue, event, window, categories ):
+        self.delay = delay
+        results = {}
+        results['Thead start time'] = self.get_current_time()
+        thread_name = threading.currentThread().getName()
+        
+        # initialize posting class
+        site = RestPost(workload['site'], workload['username'], workload['application_password'], self.logger)
+        # initialize cleaner
+        cleaner = Cleaner()
+
+        db = database_obj
+
+        
+        self.logger.debug("Finished setting up database connection for %s", workload['site'])
+        msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
+        self.update_window_reports(window, msg)
+
+        posts = db.fetch_category_posts_from_tables( no_of_posts = workload['posts'], categories = categories )
+
+        # update GUI grid
+        #self.update data grid
+        
+        short_content = []
+        published_posts = []
+        # itearate through posts
+        total_fetched_posts = 0
+        for table,contents in posts.items():
+            total_fetched_posts = total_fetched_posts + len(contents)
+            for count, post in enumerate(contents):
+                # clean post
+                # check if content is long enough
+                self.logger.debug("Content length: [%s]", post['content_length'])
+                
+                if not event.isSet():
+                    
+                    
+                    current_time = self.get_current_time()
+
+                    self.logger.debug("Cleaning content: %s", post['link_no'])
+                    content = cleaner.clean_content(post['content'])
+                    if content:
+                        self.update_gui(window, "{}: [{}-{}] Beginning processing post {} of {}. Post length {}. {} remaining".format(self.get_current_time(), threading.currentThread().getName(), workload['site'], count + 1, len(contents), post['content_length'], len(contents)-count-1))
+                        self.logger.debug("Cleaning title: %s", post['link_no'])
+                        title = ' '.join(content.split()[0:25])
+                        #title = cleaner.clean_title(post['title'])
+                        category = [post['category']]
+                        """Add meta content"""
+                        content = cleaner.add_meta_content(content, category)
+                        # post
+                        if site.publish_post(title, content, category):
+                            
+                            self.logger.info("Post No: [%s] published", post['link_no'])
+                            # slow down script for one minute to reduce hitting server rate limiter
+
+                            
+                            # update published table
+                            published = {}
+                            published['title'] = title
+                            published['content'] = content
+                            published['link_no'] = post['link_no']
+                            published['website'] = workload['site']
+                            
+                            published['table'] = table
+
+                            # append to published list
+                            published_posts.append(post['link_no'])
+
+                            # update db records
+                            db.update_posts(published)
+                            
+                            
+                            msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published['website'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+                            self.logger.debug(msg)
+                            delay = random.randint(int(self.delay/2), int(self.delay))
+                            self.logger.info("Script paused execution for {} secs".format(delay))
+                            self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
+                            time.sleep(delay)
+                        else:
+                            self.logger.debug("Failed to publish [%s] to [%s]", post['link_no'], workload['site'])
+                            
+                            msg = "{}: Post No: [{}] failed to publish [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],workload['site'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+
+                    else:
+                        # update the short content strings on the db
+                        self.update_gui(window, "{}: Short string. Failed to publish [{}]. {} posts remaining".format(self.get_current_time(), post['link_no'], len(contents)-count-1))
+                        #self.update_gui(window, "{}: Updating short record string:[{}]".format(current_time, post['link_no']))
+                        self.logger.debug("Updating short record string:[%s]",post['link_no'])
+                        db.update_short_posts(table, post['link_no'])
+                        # update short content
+                        short_content.append(post['link_no'])
+                
+                else:
+                    self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
+                    # break out of loop
+                    break         
+
+
+        self.update_gui(window, "*******************************************************")
+        self.logger.info("%s short posts found out of %s", (len(short_content)), workload['posts'])
+        results['Short Posts'] = short_content
+        results['Website'] = workload['site']
+        results['Thread Name'] = thread_name
+        results ['Posts Published'] = published_posts
+        thread_completion = datetime.now()
+        thread_completion = thread_completion.strftime("%H:%M:%S")
+        results ['Thread Completion Time'] = thread_completion
+
+        thread_queue.put(results)
+
+        # print out reports
+        self.update_window_reports(window, "**************************")
+        self.update_window_reports(window, "{}: Thread Completed [{}]".format(self.get_current_time(), thread_name))
+        self.update_window_reports(window, "{}: [{}] Short posts [{}][{}]".format(self.get_current_time(), len(short_content),thread_name, workload['site']))
+        self.update_window_reports(window, "{}: [{}] Posts published [{}][{}]".format(self.get_current_time(), len(published_posts),thread_name, workload['site']))
+        self.update_window_reports(window, "{}: [{}] Posts failed to publish [{}][{}]".format(self.get_current_time(), total_fetched_posts - len(published_posts),thread_name, workload['site']))
+        self.update_window_reports(window, "**************************")
+        # Log short content length
+  
+        db.close_conn()
+        self.logger.info("Closing database connection")
+        return
+
+
     def update_gui(self, window, msg):
         wx.CallAfter(window.log_message_to_txt_field,msg )
+
+    def update_window_reports(self, window, msg):
+        wx.CallAfter(window.log_message_to_report_txt_field,msg )

@@ -8,11 +8,15 @@ import wx.lib.inspection
 import logging
 import threading
 import time
+import datetime
+from datetime import datetime
 from queue import Queue
 from datetime import date
 from sys import maxsize
 from engine.db import Db
 from engine.posta import Posta
+from engine.reports_gui import ReportBotFrame
+from engine.category_post import CategoryPostFrame
 
 
 
@@ -21,9 +25,9 @@ from engine.gui_grids import GenericTable
 
 class PostaPanel(wx.Panel):
     #----------------------------------------------------------------------
-    def __init__(self, parent, tables, logger = None):
+    def __init__(self, parent, tables_summary, logger = None):
         wx.Panel.__init__(self, parent)
-        self.table_names = [x[0] for x in tables ]
+        self.tables_summary= tables_summary
         self.wildcard = "Setting files (*.csv)|*.csv|All files (*.*)|*.*"
 
         # get a logger
@@ -56,12 +60,35 @@ class PostaPanel(wx.Panel):
 
         control_button_sizer = wx.BoxSizer(wx.VERTICAL)
 
+        delay_label = wx.StaticText(self,-1,label="Delay in seconds")
+
+        self.delay_settings = {
+            "10 Seconds" : 10,
+            "20 Seconds" : 20,
+            "30 Seconds" : 30,
+            "60 Seconds" : 60, 
+            "2 Minutes" : 120,
+            "3 Minutes" : 180,
+            "4 Minutes" : 240,
+            "5 Minutes" : 300,
+            "10 Minutes" : 600,
+            "15 minutes" : 900,
+            "30 Minutes" : 450,
+
+        }
+
+        self.delay_combo_box = wx.ComboBox(self,-1,value="3 Minutes", choices = list(self.delay_settings.keys()))
+
+        control_button_sizer.Add(delay_label, flag=wx.ALIGN_CENTER, border=5)
+        control_button_sizer.Add(self.delay_combo_box, flag=wx.ALIGN_CENTER, border=5)
+
         # create main controluttons
         btnData = [
-            ("Begin Posting", self.beginPosting),
+            #("Post via XML-RPC", self.beginPosting),
+            ("Publish Posts", self.beginRestPosting),
             ("Stop Posting",  self.stopPosting),
-            ("Create Schedule", self.schedulePosts)]
-        self.create_buttons(control_button_sizer, btnData, flag=wx.ALL|wx.CENTER)
+            ("Post By Category", self.postByCategory)]
+        self.create_buttons(control_button_sizer, btnData, flag=wx.ALL|wx.EXPAND)
 
 
 
@@ -75,8 +102,8 @@ class PostaPanel(wx.Panel):
 
         #create grid buttons
         btnData = [
-            ("Load Websites", self.loadWebsites),
-            ("Save Settings",  self.saveSettings)]
+            ("Load Websites", self.loadWebsites)]
+            #,("Save Settings",  self.saveSettings)]
 
         self.grid_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -111,8 +138,8 @@ class PostaPanel(wx.Panel):
         self.bottom_left_vertical_sizer.Add(self.reportTxtField, 1, wx.EXPAND | wx.ALL, 5)
         self.bottom_right_vertical_sizer.Add(self.logTxtField, 1, wx.EXPAND | wx.ALL, 5)
         
-        self.bottom_horizontal_sizer.Add(self.bottom_left_vertical_sizer,1,flag = wx.EXPAND | wx.ALL)
-        self.bottom_horizontal_sizer.Add(self.bottom_right_vertical_sizer ,2,flag = wx.EXPAND | wx.ALL)
+        self.bottom_horizontal_sizer.Add(self.bottom_left_vertical_sizer,2,flag = wx.EXPAND | wx.ALL)
+        self.bottom_horizontal_sizer.Add(self.bottom_right_vertical_sizer ,3,flag = wx.EXPAND | wx.ALL)
 
 
 
@@ -138,7 +165,7 @@ class PostaPanel(wx.Panel):
     
     # def display_database_tables
     def display_database_tables(self, sizer):
-            self.databaseListBox = wx.CheckListBox(parent = self, id = -1, choices=self.table_names, style=wx.LB_MULTIPLE, name="databaseListBox")
+            self.databaseListBox = wx.CheckListBox(parent = self, id = -1, choices=list(self.tables_summary.keys()), style=wx.LB_MULTIPLE, name="databaseListBox")
             sizer.Add(self.databaseListBox, 1, wx.EXPAND)
 
            
@@ -152,11 +179,11 @@ class PostaPanel(wx.Panel):
       
         
         if data is None:
-            data = [["https://onlinetutorglobal.com/", "***********", "***********", "**********", "1", "********" ],["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ], ["********", "***********", "***********", "***********", "", "***********" ],["********", "***********", "***********", "***********", "", "***********" ],["********", "***********", "***********", "***********", "", "***********" ],["********", "***********", "***********", "***********", "", "***********" ]]
-        colLabels = ("site", "posts", "username", "password", "Crawl (Yes/No)", "Status") 
+            data = [["https://onlinetutorglobal.com/", "***********", "***********", "**********",  "********", "1" ],["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ],["********", "***********", "***********", "***********","***********", "" ],["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ]]
+        colLabels = ("site", "posts", "username", "password", "Application Password", "Crawl (Yes/No)", "Status", ) 
         self.data_table = GenericTable(data, colLabels = colLabels) 
         self.grid.SetTable(self.data_table, True)
-        self.grid.SetColFormatBool(4)
+        self.grid.SetColFormatBool(5)
         self.grid.AutoSize()
         #self.grid.AutoSizeColumns(setAsMin=True)
    
@@ -183,7 +210,7 @@ class PostaPanel(wx.Panel):
         self.logger.debug(self.data_table.data)
 
         # launch threads 
-        #self.order_queue = Queue(maxsize = 100)
+        self.order_queue = Queue(maxsize = 100)
         self.quit_event = threading.Event()
 
         for site in self.data_table.data:
@@ -192,30 +219,219 @@ class PostaPanel(wx.Panel):
             single_setting['site'] = site[0]
             single_setting['posts'] = site[1]
             # change table to list of tables
-            single_setting['table'] = "sol_inn_content"
-            single_setting['username'] = site[2]
-            single_setting['password'] = site[3]
+            # fetch from table combo box
+            tables_choosen = self.fetch_tables()
+            if len(tables_choosen) != 0:
 
-            if site[4] == "1":
+                single_setting['table'] = [self.tables_summary[x] for x in tables_choosen]
+                single_setting['username'] = site[2]
+                single_setting['password'] = site[3]
+                single_setting['application_password'] = site[4]
 
-                self.logger.debug("Beginning posting process.....")
-                #self.posta.post_content(single_setting)
-                # launch threads
-       
-                posta = threading.Thread(target= self.posta.post_threaded_content, args=(single_setting, self.quit_event, self), daemon=True)
-                self.active_threads.append(posta)
-                posta.start()
+                if site[5] == "1":
+
+                    self.logger.debug("Beginning posting process.....")
+                    #self.posta.post_content(single_setting)
+                    # launch threads
+        
+                    posta = threading.Thread(target= self.posta.post_threaded_content, args=(single_setting, self.order_queue, self.quit_event, self), daemon=True)
+                    self.active_threads.append(posta)
+                    posta.start()
+            else:
+                wx.MessageBox("You have not choosen any database to populate", "Error Publishing", wx.OK | wx.ICON_ERROR)
+                # break out of the loop
+                break
+
+        
+        # join threads
+        """
+        for t in self.active_threads:
+            t.join()"""
+
+        # retrieve queue
+        results  = []
+        while not self.order_queue.empty() or self.quit_event.isSet():
+            results.appaend(self.order_queue.get())
+            self.log_message_to_report_txt_field("----"*15)
+        for result in results:
+            for key, value in result.items():
+                if key in ['Posts Published','Short Posts']:
+                    msg = "{}: {}".format(key, len(value))
+                else:
+                    msg = "{}: {}".format(key, value)
+                self.log_message_to_report_txt_field(msg)
+
+
+#-------------------------------------------------------------------
+    def beginRestPosting(self, evt):
+        delay = self.delay_combo_box.GetSelection()
+        if delay == -1:
+            delay = self.delay_settings["2 Minutes"]
+        else:
+            delay = self.delay_settings[self.delay_combo_box.GetString(delay)]
+        print(delay)
+        
+
+        self.logger.debug(self.data_table.data)
+
+        # launch threads 
+        self.order_queue = Queue(maxsize = 500)
+        self.quit_event = threading.Event()
+
+        for site in self.data_table.data:
+
+            single_setting = {}
+            single_setting['site'] = site[0]
+            single_setting['posts'] = site[1]
+            # change table to list of tables
+
+            # fetch from table combo box
+            tables_choosen = self.fetch_tables()
+            # fetch bot delay combo box
+            
+            db = Db()
+            if len(tables_choosen) != 0:
+
+                single_setting['table'] = [self.tables_summary[x] for x in tables_choosen]
+                single_setting['username'] = site[2]
+                single_setting['password'] = site[3]
+                single_setting['application_password'] = site[4]
+
+                if site[5] == "1":
+
+                    self.logger.debug("Beginning posting process.....")
+                    #self.posta.post_content(single_setting)
+                    # launch threads
+        
+                    posta = threading.Thread(target= self.posta.post_content_rest_method, args=(delay, db, single_setting, self.order_queue, self.quit_event, self), daemon=True)
+                    self.active_threads.append(posta)
+                    posta.start()
+            else:
+                wx.MessageBox("You have not choosen any database to populate", "Error Publishing", wx.OK | wx.ICON_ERROR)
+                # break out of the loop
+                break
+
+        
+        # join threads
+        """
+        for t in self.active_threads:
+            t.join()"""
+
+        # retrieve queue
+        results  = []
+        while not self.order_queue.empty() or self.quit_event.isSet():
+            results.appaend(self.order_queue.get())
+            self.log_message_to_report_txt_field("----"*15)
+        for result in results:
+            for key, value in result.items():
+                if key in ['Posts Published','Short Posts']:
+                    msg = "{}: {}".format(key, len(value))
+                else:
+                    msg = "{}: {}".format(key, value)
+                self.log_message_to_report_txt_field(msg)
+
+#-------------------------------------------------------------------
+    def beginCategoryRestPosting(self, evt, categories):
+        delay = self.delay_combo_box.GetSelection()
+        if delay == -1:
+            delay = self.delay_settings["2 Minutes"]
+        else:
+            delay = self.delay_settings[self.delay_combo_box.GetString(delay)]
+        print(delay)
+        
+
+        self.logger.debug(self.data_table.data)
+
+        # launch threads 
+        self.order_queue = Queue(maxsize = 500)
+        self.quit_event = threading.Event()
+
+        for site in self.data_table.data:
+
+            single_setting = {}
+            single_setting['site'] = site[0]
+            single_setting['posts'] = site[1]
+            # change table to list of tables
+
+            # fetch from table combo box
+            tables_choosen = self.fetch_tables()
+            # fetch bot delay combo box
+            
+            db = Db()
+            if len(tables_choosen) != 0:
+
+                single_setting['table'] = [self.tables_summary[x] for x in tables_choosen]
+                single_setting['username'] = site[2]
+                single_setting['password'] = site[3]
+                single_setting['application_password'] = site[4]
+
+                if site[5] == "1":
+
+                    self.logger.debug("Beginning posting process.....")
+                    #self.posta.post_content(single_setting)
+                    # launch threads
+        
+                    posta = threading.Thread(target= self.posta.post_category_rest_method, args=(delay, db, single_setting, self.order_queue, self.quit_event, self, categories), daemon=True)
+                    self.active_threads.append(posta)
+                    posta.start()
+            else:
+                wx.MessageBox("You have not choosen any database to populate", "Error Publishing", wx.OK | wx.ICON_ERROR)
+                # break out of the loop
+                break
+
+        
+        # join threads
+        """
+        for t in self.active_threads:
+            t.join()"""
+
+        # retrieve queue
+        results  = []
+        while not self.order_queue.empty() or self.quit_event.isSet():
+            results.appaend(self.order_queue.get())
+            self.log_message_to_report_txt_field("----"*15)
+        for result in results:
+            for key, value in result.items():
+                if key in ['Posts Published','Short Posts']:
+                    msg = "{}: {}".format(key, len(value))
+                else:
+                    msg = "{}: {}".format(key, value)
+                self.log_message_to_report_txt_field(msg)
+
+                
+
+    ####----------------------------------
+    def fetch_tables(self):
+        return self.databaseListBox.GetCheckedStrings()
 
 
 
     #-------------------------------------------------------------------
     def stopPosting(self, evt):
+        self.log_message_to_report_txt_field("...."*15)
         self.log_message_to_report_txt_field("Stopping Bots....")
+        self.log_message_to_report_txt_field("...."*15)
         self.quit_event.set()
 
     #-------------------------------------------------------------------
-    def schedulePosts(self, evt):
-        pass
+    def postByCategory(self, evt):
+        tables_choosen = self.fetch_tables()
+        # check if tables are selected
+        if len(tables_choosen) != 0:
+            # get table names
+            tables_choosen = self.fetch_tables()
+            table_names = [self.tables_summary[x] for x in tables_choosen]
+            print(table_names)
+
+            # launch categories panel
+            frame = CategoryPostFrame(self, table_names)
+            frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
+            frame.Show(True)
+
+        else:
+            wx.MessageBox("You have not choosen any database.", "Error Publishing", wx.OK | wx.ICON_ERROR)
+            
+            
 
 
     #-------------------------------------------------------------------
@@ -236,10 +452,10 @@ class PostaPanel(wx.Panel):
             # tuple to hold data
             csv_data = list()
 
-            colLabels = ("site", "posts",  "username", "password","crawl (Yes/No)", "Status")
+            colLabels = ("site", "posts",  "username", "password", "Application password","crawl (Yes/No)")
 
             for row in reader:
-                single_site = [row[colLabels[0]],row[colLabels[1]], row[colLabels[2]], row[colLabels[3]], "1", "Idle"]
+                single_site = [row[colLabels[0]],row[colLabels[1]], row[colLabels[2]], row[colLabels[3]], row["application_password"], "1"]
                 csv_data.append(single_site)
             #csv_data = tuple(csv_data)
             # assign a new table to the grid
@@ -289,16 +505,17 @@ class PostaPanel(wx.Panel):
 class PostaBotFrame(wx.Frame):
     """Whatsapp GUI Frame"""
     def __init__(self, parent, logger = None):
-        self.title = "Posta posting Bot"
+        self.title = "Posta publishing Bot"
         wx.Frame.__init__(self, parent, -1, self.title, size=(900,700))
         self.createMenuBar()
 
         self.logger = logger or logging.getLogger(__name__)
 
         self.db = Db(self.logger)
-        tables = self.db.fetch_tables()
+        tables_summary = self.db.fetch_tables_summary()
+        # include available posts
 
-        self.createPanel(tables)
+        self.createPanel(tables_summary)
 
 
         #--------------------------------
@@ -326,7 +543,8 @@ class PostaBotFrame(wx.Frame):
                 ),
                 ("&Reports",(
                     ("View Posting Reports", "Show posts reports", self.OnPostReports),
-                    ("View Crawling Reports", "Show crawling reports", self.OnCrawlReports)
+                    ("View Crawling Reports", "Show crawling reports", self.OnCrawlReports),
+                    ("Table Summary", "Show crawling reports", self.OnTableSummary)
                 ))]
 
     def createMenuBar(self):
@@ -371,6 +589,12 @@ class PostaBotFrame(wx.Frame):
         frame = CrawlingReportsFrame("Crawling reports", parent=wx.GetTopLevelParent(self))
         frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
         frame.Show(True)
+
+    def OnTableSummary(self, event):
+        frame = ReportBotFrame(title = "Crawling reports", parent=wx.GetTopLevelParent(self), logger = self.logger)
+        frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
+        frame.Show(True)
+
 
 
 
@@ -514,10 +738,18 @@ class PostaBotApp(wx.App):
 
 
 def get_logger():
-    d = date.today()
-    log_file = d.isoformat()
+    d = datetime.now()
+
+    log_file = d.strftime("%d %a-%m-%Y-%H-%M-%S")
     log_path = os.getcwd() + "\\logs"
+
+    CHECK_FOLDER = os.path.isdir(log_path)
+    if not CHECK_FOLDER:
+          os.makedirs(log_path)
+
     print(log_path)
+
+
     logging.basicConfig(
     format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
     datefmt="'%m/%d/%Y %I:%M:%S %p",

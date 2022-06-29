@@ -26,12 +26,14 @@ class Cleaner(object):
     
     def clean_content(self, dirty_string):
         """Performs additional content formatting"""
-        if (len(dirty_string.split()) > 80):
+        content_length = len(dirty_string.split())
+        self.logger.debug("String length: %s", content_length)
+        if (content_length > 80):
             dirty_string = self.clean_string(dirty_string)
             return dirty_string
         else:
             # log short content instance
-            self.logger.debug("The string was too short: %s", dirty_string)
+            self.logger.error("The string was too short")
             return False
     
     def clean_title(self, dirty_string):
@@ -45,6 +47,7 @@ class Cleaner(object):
         """Adds additional meta content to the content string"""
         clean_string = ""
         """Add marketing jargon"""
-        meta_content="<table style = 'table-striped table-bordered table-hover' responsive='true'><tr><th>Question</th></tr><tr><td>{question}</td></tr></table>"
-        clean_string = meta_content.format(question = content)
+        #meta_content="<table style = 'table-striped table-bordered table-hover' responsive='true'><tr><th>Question</th></tr><tr><td>{question}</td></tr></table>"
+        #clean_string = meta_content.format(question = content)
+        clean_string = content
         return clean_string
