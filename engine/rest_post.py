@@ -1,6 +1,7 @@
 from re import L
 import requests
 import json
+import random
 import time
 import base64
 import logging
@@ -24,15 +25,68 @@ class RestPost():
             'Authorization': 'Basic ' + token.decode('utf-8'), 
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.82 Safari/537.36'
             }
+
+    def monthToNum(self, month):
+        return {
+                'January': 1,
+                'February': 2,
+                'March': 3,
+                'April': 4,
+                'May': 5,
+                'June': 6,
+                'July': 7,
+                'August': 8,
+                'September': 9, 
+                'October': 10,
+                'November': 11,
+                'December': 12
+        }[month]
+
+    def get_random_time_values(self):
+        day = random.randint(1,29)
+        hour = random.randint(1,24)
+        minute = random.randint(1,60)
+        second = random.randint(1,60)
+        return day, hour, minute, second
+
+
+
         
 
-    def get_current_time(self):
+    def get_current_time(self, publish_date):
         d = datetime.now()
-        d = d.strftime("%Y-%m-%dT%H:%M:%S")
+        year = publish_date[1]
+        month = publish_date[0]
+        if year is None and month is None and month != "None" and year != "None":
+            d = d.strftime("%Y-%m-%dT%H:%M:%S")
+        elif year is None and month is not None and month != "None":
+            month = self.monthToNum(month)
+            year = datetime.now().year
+            day , hour, minute, second = self.get_random_time_values()
+
+            date_string = "{0:02}/{1:02}/{2} {3:02}:{4:02}:{5:02}".format(day,month,year,hour,minute,second)
+            d = datetime.strptime(date_string, '%d/%m/%Y %H:%M:%S')
+            d = d.strftime("%Y-%m-%dT%H:%M:%S")
+        elif year is not None and month is  None and year != "None":
+            month = datetime.now().month
+            year = year
+            day , hour, minute, second = self.get_random_time_values()
+
+            date_string = "{0:02}/{1:02}/{2} {3:02}:{4:02}:{5:02}".format(day,month,year,hour,minute,second)
+            d = datetime.strptime(date_string, '%d/%m/%Y %H:%M:%S')
+            d = d.strftime("%Y-%m-%dT%H:%M:%S")
+        else:
+            month = self.monthToNum(month)
+            year = year
+            day , hour, minute, second = self.get_random_time_values()
+            date_string = "{0:02}/{1:02}/{2} {3:02}:{4:02}:{5:02}".format(day,month,year,hour,minute,second)
+            d = datetime.strptime(date_string, '%d/%m/%Y %H:%M:%S')
+            d = d.strftime("%Y-%m-%dT%H:%M:%S")
+
         return d
 
 
-    def publish_post(self, title, content, categories):
+    def publish_post(self, title, content, categories, publish_date):
 
 
         url = "{}/wp-json/wp/v2/posts".format(self.url)
@@ -47,12 +101,15 @@ class RestPost():
             category = ','.join(categories_id)"""
             
 
+        publishing_date = self.get_current_time(publish_date)
+        
+
         post = {
         'title'    : title,
         'status'   : 'publish', 
         'content'  : content,
         'categories': "",
-        'date'   : self.get_current_time()
+        'date'   : publishing_date
         }
         response = requests.post(url , headers=self.header, json=post)
         self.logger.debug("Connecting to %s: Code: %s",self.url, response.status_code)

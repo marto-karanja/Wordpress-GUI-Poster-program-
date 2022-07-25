@@ -13,7 +13,7 @@ class Cleaner(object):
         # remove image tags
         dirty_string = re.sub("(<img.*?>)", "", dirty_string, 0, re.IGNORECASE | re.DOTALL | re.MULTILINE)
         # remove stop words
-        stop_words = {"please": "", "help": "", "thank" : "", "Please": "", "Help": "", "Thank" : ""} # define desired replacements here
+        stop_words = {"please": "", "help": "", "thank" : "", "Please": "", "Help": "", "Thank" : "", "I need help answering this question": "", "I need help": ""} # define desired replacements here
 
         # use these three lines to do the replacement
         rep = dict((re.escape(k), v) for k, v in stop_words.items())

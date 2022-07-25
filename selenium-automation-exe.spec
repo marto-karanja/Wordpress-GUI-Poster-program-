@@ -6,6 +6,7 @@ block_cipher = None
 a = Analysis(['main_gui.py'],
              pathex=['C:\\Users\\Administrator\\Documents\\Crawler\\uploader\\1.2'],
              binaries=[],
+             datas=[('config.json', '.')],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
@@ -16,6 +17,7 @@ a = Analysis(['main_gui.py'],
              noarchive=False)
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
+a.datas += [('gui/posta.ico','C:\\Users\\Admin\\Documents\\projects\\crawler\\Devt\\posta\\1.2\\gui\\posta.ico', "DATA"), ('gui/posta.png','C:\\Users\\Admin\\Documents\\projects\\crawler\\Devt\\posta\\1.2\\gui\\posta.png', "DATA")]
 exe = EXE(pyz,
           a.scripts,
           [],
@@ -34,3 +36,4 @@ coll = COLLECT(exe,
                upx=True,
                upx_exclude=[],
                name='Posta Uploader')
+

@@ -1,5 +1,6 @@
 import os
 import sys
+from turtle import delay
 import wx
 import csv
 import wx.adv
@@ -25,15 +26,18 @@ from engine.gui_grids import GenericTable
 
 class PostaPanel(wx.Panel):
     #----------------------------------------------------------------------
-    def __init__(self, parent, tables_summary, logger = None):
+    def __init__(self, parent, tables_summary,db, logger = None):
         wx.Panel.__init__(self, parent)
         self.tables_summary= tables_summary
         self.wildcard = "Setting files (*.csv)|*.csv|All files (*.*)|*.*"
 
         # get a logger
-        self.logger = logger or logging.getLogger(__name__) 
+        self.logger = logger or logging.getLogger(__name__)
+        self.db = db
         self.posta = Posta()
-        self.active_threads = []  
+        self.active_threads = []
+
+        self.connection = None
 
 
                
@@ -55,10 +59,12 @@ class PostaPanel(wx.Panel):
         
 
         # create combobox
-        control_panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.display_database_tables(control_panel_sizer)
+        self.control_panel_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.display_database_tables(self.control_panel_sizer)
 
-        control_button_sizer = wx.BoxSizer(wx.VERTICAL)
+        control_button_sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Publish")
+        # add date sizer
+        date_button_sizer = wx.StaticBoxSizer(wx.HORIZONTAL, self, "Bot Settings")
 
         delay_label = wx.StaticText(self,-1,label="Delay in seconds")
 
@@ -77,10 +83,41 @@ class PostaPanel(wx.Panel):
 
         }
 
+        self.years = ["None","2010","2011","2012","2013","2014","2015","2016","2017","2018","2019","2020","2021","2022"]
+
+        self.months = ["None,","January","February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+        delay_label = wx.StaticText(self,-1,label="Delay in seconds")
         self.delay_combo_box = wx.ComboBox(self,-1,value="3 Minutes", choices = list(self.delay_settings.keys()))
 
-        control_button_sizer.Add(delay_label, flag=wx.ALIGN_CENTER, border=5)
-        control_button_sizer.Add(self.delay_combo_box, flag=wx.ALIGN_CENTER, border=5)
+        delay_box_sizer = wx.BoxSizer(wx.VERTICAL)
+        delay_box_sizer.Add(delay_label, flag=wx.ALIGN_CENTER, border=5)
+        delay_box_sizer.Add(self.delay_combo_box, flag=wx.ALIGN_CENTER, border=5)
+
+        date_label = wx.StaticText(self,-1,label="Publishing Year")
+        self.date_combo_box = wx.ComboBox(self,-1,value="None", choices = self.years)
+
+        date_box_sizer = wx.BoxSizer(wx.VERTICAL)
+        date_box_sizer.Add(date_label, flag=wx.ALIGN_CENTER, border=5)
+        date_box_sizer.Add(self.date_combo_box, flag=wx.ALIGN_CENTER, border=5)
+
+        month_label = wx.StaticText(self,-1,label="Publishing Month")
+        self.month_combo_box = wx.ComboBox(self,-1,value="None", choices = self.months)
+
+        month_box_sizer = wx.BoxSizer(wx.VERTICAL)
+        month_box_sizer.Add(month_label, flag=wx.ALIGN_CENTER, border=5)
+        month_box_sizer.Add(self.month_combo_box, flag=wx.ALIGN_CENTER, border=5)
+
+        #control_button_sizer.Add(delay_label, flag=wx.ALIGN_CENTER, border=5)
+        date_button_sizer.Add(delay_box_sizer, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
+        
+        #date_button_sizer.Add(date_label, flag=wx.ALIGN_CENTER, border=5)
+        date_button_sizer.Add(date_box_sizer, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
+        date_button_sizer.Add(month_box_sizer, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
+
+
+
+
 
         # create main controluttons
         btnData = [
@@ -102,8 +139,8 @@ class PostaPanel(wx.Panel):
 
         #create grid buttons
         btnData = [
-            ("Load Websites", self.loadWebsites)]
-            #,("Save Settings",  self.saveSettings)]
+            ("Load Websites", self.loadWebsites),
+            ("Connect To Remote Database", self.connectRemoteDb)]
 
         self.grid_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -128,10 +165,16 @@ class PostaPanel(wx.Panel):
         self.top_left_vertical_sizer.Add(self.reportSizer, 0 , flag = wx.EXPAND)
         self.top_left_vertical_sizer.Add(self.grid_button_sizer, 0, flag = wx.EXPAND)
 
-        self.top_right_vertical_sizer.Add(control_panel_sizer)
-        self.top_right_vertical_sizer.Add(control_button_sizer)
+        
 
-        self.top_horizontal_sizer.Add(self.top_left_vertical_sizer, 3, flag = wx.EXPAND)
+        
+        self.top_right_vertical_sizer.Add(self.control_panel_sizer, 0 , flag = wx.EXPAND)
+        self.top_right_vertical_sizer.Add(date_button_sizer, 0 , flag = wx.EXPAND)
+        self.top_right_vertical_sizer.Add(control_button_sizer, 0 , flag = wx.EXPAND)
+        
+        
+
+        self.top_horizontal_sizer.Add(self.top_left_vertical_sizer, 2, flag = wx.EXPAND)
         self.top_horizontal_sizer.Add(self.top_right_vertical_sizer, 1, flag = wx.EXPAND)
 
         #-----
@@ -149,8 +192,37 @@ class PostaPanel(wx.Panel):
         
 
         self.SetAutoLayout(True)
+        
         self.SetSizer(self.mainSizer)
         self.Layout()
+
+    def connectRemoteDb(self, evt):
+        
+        import json
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+        connection = {}
+        connection["host"] = config["database"]["remote"]["host"]
+        connection["database"] = config["database"]["remote"]["database"]
+        connection["user"] = config["database"]["remote"]["user"]
+        connection["password"] = config["database"]["remote"]["password"]
+
+
+        self.connection = connection        
+        self.db = Db(logger = self.logger, connection = connection)
+        self.tables_summary = self.db.fetch_tables_summary()
+        self.databaseListBox.Destroy()
+        self.databaseListBox = wx.CheckListBox(parent = self, id = -1, choices=list(self.tables_summary.keys()), style=wx.LB_MULTIPLE, name="databaseListBox")
+
+        self.control_panel_sizer.Add(self.databaseListBox, 1, wx.EXPAND)
+
+        
+        #self.Hide()
+        self.Refresh()
+        self.Update()
+        self.Layout()
+        self.Fit()
+        #self.Show()
 
 
 
@@ -179,7 +251,7 @@ class PostaPanel(wx.Panel):
       
         
         if data is None:
-            data = [["https://onlinetutorglobal.com/", "***********", "***********", "**********",  "********", "1" ],["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ],["********", "***********", "***********", "***********","***********", "" ],["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ]]
+            data = [["https://onlinetutorglobal.com/", "***********", "***********", "**********",  "********", "1" ],["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ],["********", "***********", "***********", "***********","***********", "" ],["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ], ["********", "***********", "***********", "***********","***********", "" ]]
         colLabels = ("site", "posts", "username", "password", "Application Password", "Crawl (Yes/No)", "Status", ) 
         self.data_table = GenericTable(data, colLabels = colLabels) 
         self.grid.SetTable(self.data_table, True)
@@ -262,6 +334,22 @@ class PostaPanel(wx.Panel):
                 self.log_message_to_report_txt_field(msg)
 
 
+
+    def get_publishing_date(self):
+        """Returns publishing date choosen by user"""
+        month = self.month_combo_box.GetSelection()
+        if month == -1:
+            month = None
+        else:
+            month = self.months[int(month)]
+        year = self.date_combo_box.GetSelection()
+        if year == -1:
+            year = None
+        else:
+            year = self.years[int(year)]
+        return (month, year)
+
+
 #-------------------------------------------------------------------
     def beginRestPosting(self, evt):
         delay = self.delay_combo_box.GetSelection()
@@ -269,7 +357,9 @@ class PostaPanel(wx.Panel):
             delay = self.delay_settings["2 Minutes"]
         else:
             delay = self.delay_settings[self.delay_combo_box.GetString(delay)]
-        print(delay)
+
+        publishing_date = self.get_publishing_date()
+            
         
 
         self.logger.debug(self.data_table.data)
@@ -277,6 +367,10 @@ class PostaPanel(wx.Panel):
         # launch threads 
         self.order_queue = Queue(maxsize = 500)
         self.quit_event = threading.Event()
+
+
+        # remove database object from loop
+        
 
         for site in self.data_table.data:
 
@@ -288,8 +382,10 @@ class PostaPanel(wx.Panel):
             # fetch from table combo box
             tables_choosen = self.fetch_tables()
             # fetch bot delay combo box
+
+
             
-            db = Db()
+            
             if len(tables_choosen) != 0:
 
                 single_setting['table'] = [self.tables_summary[x] for x in tables_choosen]
@@ -297,13 +393,18 @@ class PostaPanel(wx.Panel):
                 single_setting['password'] = site[3]
                 single_setting['application_password'] = site[4]
 
-                if site[5] == "1":
+                if site[5] == "1":            
+                    # fetch posts
+
+                    posts = self.db.fetch_posts_from_tables( no_of_posts = single_setting['posts'], tables = single_setting['table'] )
 
                     self.logger.debug("Beginning posting process.....")
                     #self.posta.post_content(single_setting)
                     # launch threads
+                    
+                    self.log_message_to_report_txt_field(f"Fetching {len(posts)} from database")
         
-                    posta = threading.Thread(target= self.posta.post_content_rest_method, args=(delay, db, single_setting, self.order_queue, self.quit_event, self), daemon=True)
+                    posta = threading.Thread(target= self.posta.post_content_rest_method, args=(self.connection, publishing_date, delay, posts, single_setting, self.order_queue, self.quit_event, self), daemon=True)
                     self.active_threads.append(posta)
                     posta.start()
             else:
@@ -320,7 +421,7 @@ class PostaPanel(wx.Panel):
         # retrieve queue
         results  = []
         while not self.order_queue.empty() or self.quit_event.isSet():
-            results.appaend(self.order_queue.get())
+            results.append(self.order_queue.get())
             self.log_message_to_report_txt_field("----"*15)
         for result in results:
             for key, value in result.items():
@@ -337,14 +438,16 @@ class PostaPanel(wx.Panel):
             delay = self.delay_settings["2 Minutes"]
         else:
             delay = self.delay_settings[self.delay_combo_box.GetString(delay)]
-        print(delay)
+        
         
 
         self.logger.debug(self.data_table.data)
+        publishing_date = self.get_publishing_date()
 
         # launch threads 
         self.order_queue = Queue(maxsize = 500)
         self.quit_event = threading.Event()
+        
 
         for site in self.data_table.data:
 
@@ -357,7 +460,9 @@ class PostaPanel(wx.Panel):
             tables_choosen = self.fetch_tables()
             # fetch bot delay combo box
             
-            db = Db()
+            
+
+            posts = self.db.fetch_category_posts_from_tables( no_of_posts = single_setting['posts'], categories = categories )
             if len(tables_choosen) != 0:
 
                 single_setting['table'] = [self.tables_summary[x] for x in tables_choosen]
@@ -371,7 +476,7 @@ class PostaPanel(wx.Panel):
                     #self.posta.post_content(single_setting)
                     # launch threads
         
-                    posta = threading.Thread(target= self.posta.post_category_rest_method, args=(delay, db, single_setting, self.order_queue, self.quit_event, self, categories), daemon=True)
+                    posta = threading.Thread(target= self.posta.post_category_rest_method, args=(self.connection, publishing_date, delay, posts, single_setting, self.order_queue, self.quit_event, self, categories), daemon=True)
                     self.active_threads.append(posta)
                     posta.start()
             else:
@@ -424,7 +529,7 @@ class PostaPanel(wx.Panel):
             print(table_names)
 
             # launch categories panel
-            frame = CategoryPostFrame(self, table_names)
+            frame = CategoryPostFrame(self, table_names, self.db)
             frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
             frame.Show(True)
 
@@ -506,7 +611,7 @@ class PostaBotFrame(wx.Frame):
     """Whatsapp GUI Frame"""
     def __init__(self, parent, logger = None):
         self.title = "Posta publishing Bot"
-        wx.Frame.__init__(self, parent, -1, self.title, size=(900,700))
+        wx.Frame.__init__(self, parent, -1, self.title)
         self.createMenuBar()
 
         self.logger = logger or logging.getLogger(__name__)
@@ -527,9 +632,10 @@ class PostaBotFrame(wx.Frame):
         self.Center(wx.BOTH)
 
     def createPanel(self, table):
-        self.mainPanel = PostaPanel(self, table, self.logger)
+        self.mainPanel = PostaPanel(self, table, self.db, self.logger)
         self.box_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.box_sizer.Add(self.mainPanel, 1, wx.EXPAND)
+        self.box_sizer.SetSizeHints(self)
         self.SetSizer(self.box_sizer)
 
 

@@ -1,50 +1,58 @@
 # Db Access Class
 from mysql.connector.locales.eng import client_error
 import mysql.connector
+import mysql.connector.pooling
 import logging
-import socket
+
+from mysqlx import InterfaceError
 #import random
 
 class Db(object):
     """Db access class"""
     def __init__(self, logger = None, connection = None):
+              
         self.logger = logger or logging.getLogger(__name__)
-        self.ip = self.get_ip_address()
         counter = 0
         while counter < 2:
-            self.logger.debug("{} : No of connection attempts".format(counter))
+            print("{} connection attempt".format(counter))
             if self.create_connection(connection):
                 break
             counter = counter + 1
+
         
         self.logger.debug("Database connection created")
 
-    def get_ip_address(self):
-        hostname=socket.gethostname()
-        return socket.gethostbyname(hostname) 
+    def __new__(cls, logger = None, connection = None):
+        """ creates a singleton object, if it is not created,
+        or else returns the previous singleton object"""
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(Db, cls).__new__(cls)
+        return cls.instance
 
     def create_connection(self, connection):
         
         if connection is None:
-            self.conn = mysql.connector.connect(host="localhost", user="kush", passwd="incorrect", db="crawls", charset="utf8")
+            self.conn = mysql.connector.pooling.MySQLConnectionPool(pool_name = "mypool",pool_size = 32, host="localhost", user="kush", passwd="incorrect", db="crawls", charset="utf8")
         else:
             try:
-                self.conn = mysql.connector.connect(host = connection["host"], user = connection["user"], passwd = connection["password"], db=connection["database"], charset="utf8")
+                self.conn = mysql.connector.pooling.MySQLConnectionPool(pool_name = "mypool",pool_size = 35,host = connection["host"], user = connection["user"], passwd = connection["password"], db=connection["database"], charset="utf8")
             except mysql.connector.Error as err:
                 self.logger.error("Error connecting to database", exc_info = 1)
                 return False
             else:
                 return True
+
     
     def fetch_posts(self, month=None,year=None, category=None, posts=None, table=None):
         """method to fetch posts"""
         #create cursor object
-        cursor = self.conn.cursor(dictionary=True)
+        conn = self.conn.get_connection()
+        cursor = conn.cursor(dictionary=True)
         #create dynamic queries
         # fetch from different databases
         #query  = "select link_no, title, processed_content, category from " + table + " where category=%s and processed = 'False' limit %s"
         # query where category is not specified
-        query  = "select link_no, title, content, content_length, category from " + table + " where processed = 'False' and content_length > 75 limit  %s"
+        query  = "select link_no, title, content, content_length, category from " + table + " where processed = 'False' and content_length > 95 limit  %s"
         self.logger.info((query + ' '+str(int(posts))) )
         try:
             cursor.execute(query, (int(posts),))
@@ -65,7 +73,8 @@ class Db(object):
     def fetch_posts_from_tables(self, no_of_posts = None, tables = None):
 
         #create cursor object
-        cursor = self.conn.cursor(dictionary=True)
+        conn = self.conn.get_connection()
+        cursor = conn.cursor(dictionary=True)
 
         table_results = {}
         no_of_posts = int(no_of_posts)
@@ -103,7 +112,8 @@ class Db(object):
     def fetch_category_posts_from_tables(self, no_of_posts = None, categories = None):
 
         #create cursor object
-        cursor = self.conn.cursor(dictionary=True)
+        conn = self.conn.get_connection()
+        cursor = conn.cursor(dictionary=True)
 
         table_results = {}
         no_of_posts = int(no_of_posts)
@@ -142,19 +152,22 @@ class Db(object):
     ####----------------------------------------------------
     def update_posts(self, post):
         """update fetched posts"""
-        cursor = self.conn.cursor()
+        
+        conn = self.conn.get_connection()
+        cursor = conn.cursor()
+
         query = "insert into published (title, content, link_no, website, table_source) values (%s,%s,%s,%s,%s)"
         # insert post in table
         try:
             cursor.execute(query,(post['title'],post['content'], post['link_no'], post['website'], post['table']))
             query ='update '+ post['table'] +' set processed = "True" where link_no = %s' 
             cursor.execute(query, (post['link_no'],))
-            self.conn.commit()
-            self.logger.info("Post No: [%s] updated in db", post['link_no'])
+            conn.commit()
+            self.logger.info("Post No: [%s] updated in db [%s]", post['link_no'],  post['table'])
             cursor.close()
             return True
         except:
-            self.conn.rollback()
+            conn.rollback()
             self.logger.warning("Post No: [%s] was not updated to the website due to an insert error", post['link_no'])
             self.logger.error('Problem with update operation', exc_info=True)
             cursor.close()
@@ -162,17 +175,20 @@ class Db(object):
 
     def update_short_posts(self, table, post_no):
         """update fetched posts"""
-        cursor = self.conn.cursor()
+        
+        conn = self.conn.get_connection()
+        cursor = conn.cursor(dictionary=True)
+
         # update table
         try:
             query = 'update '+ table + ' set processed = "True",short = "True" where link_no = %s'
             cursor.execute(query, (post_no,))
-            self.conn.commit()
+            conn.commit()
             self.logger.debug("Post No: [%s] updated in db", post_no)
             cursor.close()
             return True
         except:
-            self.conn.rollback()
+            conn.rollback()
             self.logger.warning("Post No: [%s] was not updated to the website due to an insert error", post_no)
             self.logger.error('Problem with update operation', exc_info=True)
             cursor.close()
@@ -180,7 +196,10 @@ class Db(object):
 
     def fetch_tables_summary(self):
         query = "SHOW TABLES LIKE '%_content'"
-        cursor = self.conn.cursor()
+        
+        conn = self.conn.get_connection()
+        cursor = conn.cursor()
+
         # run the query
 
         try:
@@ -192,12 +211,14 @@ class Db(object):
         cursor.close()
         results = {}
 
-        cursor = self.conn.cursor(dictionary=True)
+        cursor = conn.cursor(dictionary=True)
+        
         for table in tables:
-            query = "SELECT count(*) as 'Available Posts' FROM {} where processed = 'False' and content_length > 75".format(table[0])
+            query = "SELECT count(*) as 'Available Posts' FROM {} where processed = 'False' and content_length > 90".format(table[0])
             #print(query)
             cursor.execute(query)
             result = cursor.fetchall()
+            
             
             summary = "{} - {} posts".format(table[0], result[0]['Available Posts'])
             results [summary]=  table[0]
@@ -211,17 +232,22 @@ class Db(object):
     #########----------------------------
     def fetch_tables(self):
         query = "SHOW TABLES LIKE '%_content'";
-        cursor = self.conn.cursor()
+        
+        conn = self.conn.get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+
         # run the query
 
         try:
             cursor.execute(query)
             table_names = cursor.fetchall()
-            self.conn.commit()
+            conn.commit()
             self.logger.debug("Fetching database tables")
         except:
-            self.conn.rollback()
+            conn.rollback()
             self.logger.error("Unable to fetch database tabkles")
+        cursor.close()
         return table_names
 
     
@@ -229,6 +255,7 @@ class Db(object):
     def fetch_table_statistics(self):
         # fetch tables 
         tables = self.fetch_tables()
+
 
 
         # for each table fetch published, unpublished, rejected, crawled, links
@@ -264,7 +291,7 @@ class Db(object):
 
         for table in table_list:
             query = """
-            SELECT count(*), category, processed FROM {table} where content_length >75 group by category, processed""".format(table = table)
+            SELECT count(*), category, processed FROM {table} where content_length >80 group by category, processed""".format(table = table)
             results = self.process_query(query)
             category_statistics[table] = results
 
@@ -275,7 +302,8 @@ class Db(object):
     def process_query(self, query):
         print(query)
 
-        cursor = self.conn.cursor()
+        conn = self.conn.get_connection()
+        cursor = conn.cursor()
         # run the query
 
         results = []
@@ -286,6 +314,7 @@ class Db(object):
             self.logger.debug("Processing query")
         except:
             self.logger.error("Unable to fetch database tables")
+        cursor.close()
         return results
 
 

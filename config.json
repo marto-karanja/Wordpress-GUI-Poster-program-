@@ -1,0 +1,10 @@
+{
+    "database": {
+        "remote": {
+            "host" : "66.29.156.93",
+            "database" : "acempqhs_crawls",
+            "user" : "acempqhs_crawls",
+            "password" : "0kV%6mX;WXp&"
+        }
+    }
+}

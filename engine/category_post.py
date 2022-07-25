@@ -18,14 +18,14 @@ from engine.posta import Posta
 
 class CategoryPostFrame(wx.Frame):
     """Whatsapp GUI Frame"""
-    def __init__(self,  parent, table_list, title = None, logger = None):
+    def __init__(self,  parent, table_list, db, title = None, logger = None):
         self.title = title or "Category Breakdown"
         wx.Frame.__init__(self, parent, -1, self.title)
         self.parent  = parent
 
         self.logger = logger or logging.getLogger(__name__)
 
-        self.db = Db(self.logger)
+        self.db = db
         # fetch database as a list of categories and count
         self.category_summary = self.db.fetch_category_statistics(table_list)
 
@@ -153,7 +153,11 @@ class CategoryPostPanel(wx.Panel):
             
             for counter,item in enumerate(self.category_summary[table]):
                 if item[2] == "False":
-                    combo_choices["{posts} Posts available for {category}. {published} aleardy published".format(posts = item[0], category = item[1], published = self.category_summary[table][counter - 1][0] )] = item[1]
+                    if self.category_summary[table][counter - 1][2] == "True":
+                        published = self.category_summary[table][counter - 1][0]
+                    else:
+                        published = 0
+                    combo_choices["{posts} Posts available for {category}. {published} aleardy published".format(posts = item[0], category = item[1], published = published )] = item[1]
 
             self.combo_dictionary[table] = combo_choices
 

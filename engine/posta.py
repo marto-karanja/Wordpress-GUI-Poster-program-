@@ -222,7 +222,7 @@ class Posta():
         self.logger.info("Closing database connection")
         return
 
-    def post_content_rest_method(self, delay, database_obj, workload, thread_queue, event, window ):
+    def post_content_rest_method(self, connection, publishing_date, delay, posts, workload, thread_queue, event, window ):
         self.delay = delay
         results = {}
         results['Thead start time'] = self.get_current_time()
@@ -233,14 +233,16 @@ class Posta():
         # initialize cleaner
         cleaner = Cleaner()
 
-        db = database_obj
-
+        if connection is None:
+            db = Db()
+        else:
+            db = Db(connection = connection)
         
         self.logger.debug("Finished setting up database connection for %s", workload['site'])
         msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
         self.update_window_reports(window, msg)
 
-        posts = db.fetch_posts_from_tables( no_of_posts = workload['posts'], tables = workload['table'] )
+        #posts = db.fetch_posts_from_tables( no_of_posts = workload['posts'], tables = workload['table'] )
 
         # update GUI grid
         #self.update data grid
@@ -259,7 +261,7 @@ class Posta():
                 if not event.isSet():
                     
                     
-                    current_time = self.get_current_time()
+                    #current_time = self.get_current_time()
 
                     self.logger.debug("Cleaning content: %s", post['link_no'])
                     content = cleaner.clean_content(post['content'])
@@ -272,7 +274,7 @@ class Posta():
                         """Add meta content"""
                         content = cleaner.add_meta_content(content, category)
                         # post
-                        if site.publish_post(title, content, category):
+                        if site.publish_post(title, content, category, publishing_date):
                             
                             self.logger.info("Post No: [%s] published", post['link_no'])
                             # slow down script for one minute to reduce hitting server rate limiter
@@ -343,30 +345,32 @@ class Posta():
         self.update_window_reports(window, "**************************")
         # Log short content length
   
-        db.close_conn()
+        #db.close_conn()
         self.logger.info("Closing database connection")
         return
 
 
-    def post_category_rest_method(self, delay, database_obj, workload, thread_queue, event, window, categories ):
+    def post_category_rest_method(self, connection, publishing_date, delay, posts, workload, thread_queue, event, window, categories ):
         self.delay = delay
         results = {}
         results['Thead start time'] = self.get_current_time()
         thread_name = threading.currentThread().getName()
+
+        if connection is None:
+            db = Db()
+        else:
+            db = Db(connection = connection)
         
         # initialize posting class
         site = RestPost(workload['site'], workload['username'], workload['application_password'], self.logger)
         # initialize cleaner
         cleaner = Cleaner()
 
-        db = database_obj
-
         
         self.logger.debug("Finished setting up database connection for %s", workload['site'])
         msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
         self.update_window_reports(window, msg)
 
-        posts = db.fetch_category_posts_from_tables( no_of_posts = workload['posts'], categories = categories )
 
         # update GUI grid
         #self.update data grid
@@ -385,7 +389,7 @@ class Posta():
                 if not event.isSet():
                     
                     
-                    current_time = self.get_current_time()
+                    #current_time = self.get_current_time()
 
                     self.logger.debug("Cleaning content: %s", post['link_no'])
                     content = cleaner.clean_content(post['content'])
@@ -398,7 +402,7 @@ class Posta():
                         """Add meta content"""
                         content = cleaner.add_meta_content(content, category)
                         # post
-                        if site.publish_post(title, content, category):
+                        if site.publish_post(title, content, category, publishing_date):
                             
                             self.logger.info("Post No: [%s] published", post['link_no'])
                             # slow down script for one minute to reduce hitting server rate limiter
@@ -417,6 +421,7 @@ class Posta():
                             published_posts.append(post['link_no'])
 
                             # update db records
+                            self.logger.info("Updating database")
                             db.update_posts(published)
                             
                             
@@ -469,7 +474,7 @@ class Posta():
         self.update_window_reports(window, "**************************")
         # Log short content length
   
-        db.close_conn()
+        #db.close_conn()
         self.logger.info("Closing database connection")
         return
 
