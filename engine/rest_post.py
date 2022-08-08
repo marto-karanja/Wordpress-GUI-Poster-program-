@@ -44,9 +44,9 @@ class RestPost():
 
     def get_random_time_values(self):
         day = random.randint(1,29)
-        hour = random.randint(1,24)
-        minute = random.randint(1,60)
-        second = random.randint(1,60)
+        hour = random.randint(1,23)
+        minute = random.randint(1,58)
+        second = random.randint(1,58)
         return day, hour, minute, second
 
 

@@ -9,7 +9,7 @@ class Db(object):
     """Db access class"""
     def __init__(self, logger = None, connection = None):
         self.logger = logger or logging.getLogger(__name__)
-        self.ip = self.get_ip_address()
+        self.ip = "ip_" + self.get_ip_address()
         counter = 0
         while counter < 2:
             self.logger.debug("{} : No of connection attempts".format(counter))
@@ -41,10 +41,8 @@ class Db(object):
         #create cursor object
         cursor = self.conn.cursor(dictionary=True)
         #create dynamic queries
-        # fetch from different databases
-        #query  = "select link_no, title, processed_content, category from " + table + " where category=%s and processed = 'False' limit %s"
         # query where category is not specified
-        query  = "select link_no, title, content, content_length, category from " + table + " where processed = 'False' and content_length > 75 limit  %s"
+        query  = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 limit  %s".format(ip = self.ip)
         self.logger.info((query + ' '+str(int(posts))) )
         try:
             cursor.execute(query, (int(posts),))
@@ -75,7 +73,7 @@ class Db(object):
         for table in tables:
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where processed = 'False' and content_length > 95 ORDER BY RAND() limit %s "
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 95 ORDER BY RAND() limit %s ".format(ip = self.ip)
 
                 self.logger.info((query + ' '+str(post_no)) )
 
@@ -114,7 +112,8 @@ class Db(object):
         for table in categories.keys():
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where processed = 'False' and content_length > 80 and category in ('"+ "','".join(categories[table]) + "') ORDER BY RAND() limit {}".format(post_no)
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 80 and category in ('"+ "','".join(categories[table]) + "') ORDER BY RAND() limit {limit}"
+                query = query.format(ip = self.ip, limit = post_no)
 
                 self.logger.info(query)
 
@@ -147,7 +146,7 @@ class Db(object):
         # insert post in table
         try:
             cursor.execute(query,(post['title'],post['content'], post['link_no'], post['website'], post['table']))
-            query ='update '+ post['table'] +' set processed = "True" where link_no = %s' 
+            query ='update '+ post['table'] +' set `{ip}` = "True" where link_no = %s'.format(ip = self.ip) 
             cursor.execute(query, (post['link_no'],))
             self.conn.commit()
             self.logger.info("Post No: [%s] updated in db", post['link_no'])
@@ -165,7 +164,7 @@ class Db(object):
         cursor = self.conn.cursor()
         # update table
         try:
-            query = 'update '+ table + ' set processed = "True",short = "True" where link_no = %s'
+            query = 'update '+ table + ' set `{ip}` = "True",short = "True" where link_no = %s'.format(ip = self.ip)
             cursor.execute(query, (post_no,))
             self.conn.commit()
             self.logger.debug("Post No: [%s] updated in db", post_no)
@@ -194,7 +193,7 @@ class Db(object):
 
         cursor = self.conn.cursor(dictionary=True)
         for table in tables:
-            query = "SELECT count(*) as 'Available Posts' FROM {} where processed = 'False' and content_length > 75".format(table[0])
+            query = "SELECT count(*) as 'Available Posts' FROM {table} where `{ip}` = 'False' and content_length > 75".format(table = table[0], ip = self.ip)
             #print(query)
             cursor.execute(query)
             result = cursor.fetchall()
@@ -239,9 +238,9 @@ class Db(object):
             links_table = ("_").join(links_table)
 
             query = """
-             SELECT count(*) FROM {table} where processed = 'True'
+             SELECT count(*) FROM {table} where `{ip}` = 'True'
              union all
-             SELECT count(*) FROM {table} where processed = 'False'
+             SELECT count(*) FROM {table} where `{ip}` = 'False'
              union all
              SELECT count(*) FROM {table} where short = 'True'
              union all
@@ -249,7 +248,7 @@ class Db(object):
              union all
              Select count(*) from {links_table}
 
-             """.format(table = table[0], links_table = links_table)
+             """.format(table = table[0], links_table = links_table, ip = self.ip)
             results = self.process_query(query)
             stats = [table[0]]
             for row in results:
@@ -264,7 +263,7 @@ class Db(object):
 
         for table in table_list:
             query = """
-            SELECT count(*), category, processed FROM {table} where content_length >75 group by category, processed""".format(table = table)
+            SELECT count(*), category, `{ip}` FROM {table} where content_length >75 group by category, `{ip}`""".format(table = table, ip = self.ip)
             results = self.process_query(query)
             category_statistics[table] = results
 
