@@ -18,6 +18,10 @@ from engine.db import Db
 from engine.posta import Posta
 from engine.reports_gui import ReportBotFrame
 from engine.category_post import CategoryPostFrame
+from engine.gui.banned_strings_gui import BannedStringsFrame
+from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
+from engine.local_db import get_connection
+
 
 
 
@@ -612,6 +616,8 @@ class PostaBotFrame(wx.Frame):
     def __init__(self, parent, logger = None):
         self.title = "Posta publishing Bot"
         wx.Frame.__init__(self, parent, -1, self.title)
+        self.setup_local_db()
+        
         self.createMenuBar()
 
         self.logger = logger or logging.getLogger(__name__)
@@ -631,6 +637,18 @@ class PostaBotFrame(wx.Frame):
         self.SetIcon(frameIcon)
         self.Center(wx.BOTH)
 
+    def setup_local_db(self):
+        database_url = "{}\{}".format(os.getcwd(), "settings.db")
+        try:        
+            # GET THE CONNECTION OBJECT (ENGINE) FOR THE DATABASE
+            engine = get_connection(f"sqlite:///{database_url}")
+        except Exception as ex:
+            print("Connection could not be made due to the following error: \n", ex)
+        else:
+            print("Connection created successfully.")
+        Base.metadata.create_all(engine)
+
+
     def createPanel(self, table):
         self.mainPanel = PostaPanel(self, table, self.db, self.logger)
         self.box_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -643,8 +661,7 @@ class PostaBotFrame(wx.Frame):
         return [("&File", (
 
                     ("About...", "Show about window", self.OnAbout),
-                    ("Export Settings", "Export Database", self.OnExport),
-                    ("Import Settings", "Import Database", self.OnImport),
+                    ("Manage Banned Strings", "Create/Delete Banned Strings", self.OnManageBanned),
                     ("&Quit", "Quit", self.OnCloseWindow))
                 ),
                 ("&Reports",(
@@ -700,6 +717,17 @@ class PostaBotFrame(wx.Frame):
         frame = ReportBotFrame(title = "Crawling reports", parent=wx.GetTopLevelParent(self), logger = self.logger)
         frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
         frame.Show(True)
+
+
+    #------------------------------------------------------------
+    def OnManageBanned(self, event):
+        frame = BannedStringsFrame(parent=wx.GetTopLevelParent(self), title = "Banned Strings")
+        frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
+        frame.Show(True)
+
+    # to do
+    # launch banned strings frame
+    # delete or create strings
 
 
 
@@ -783,7 +811,7 @@ cellpadding="0" border="1">
 '''
 
     def __init__(self, parent):
-        wx.Dialog.__init__(self, parent, -1, 'About Sketch',
+        wx.Dialog.__init__(self, parent, -1, 'About Posta Wordpress Posting Framework',
                           size=(440, 400) )
 
         html = wx.html.HtmlWindow(self)

@@ -1,6 +1,7 @@
 # String cleaner class
 import re
 import logging
+from engine.stop_words import BannedStrings
 
 class Cleaner(object):
     """contains methods to clean strings"""
@@ -13,7 +14,10 @@ class Cleaner(object):
         # remove image tags
         dirty_string = re.sub("(<img.*?>)", "", dirty_string, 0, re.IGNORECASE | re.DOTALL | re.MULTILINE)
         # remove stop words
-        stop_words = {"please": "", "help": "", "thank" : "", "Please": "", "Help": "", "Thank" : "", "I need help answering this question": "", "I need help": ""} # define desired replacements here
+        banned_strings = BannedStrings()
+
+        stop_words = dict.fromkeys(banned_strings.stop_words, "")
+        print(stop_words)
 
         # use these three lines to do the replacement
         rep = dict((re.escape(k), v) for k, v in stop_words.items())

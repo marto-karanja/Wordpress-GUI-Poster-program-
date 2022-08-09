@@ -10,6 +10,9 @@ class Db(object):
     def __init__(self, logger = None, connection = None):
         self.logger = logger or logging.getLogger(__name__)
         self.ip = "ip_" + self.get_ip_address()
+        if connection is None:
+            # in case of development machine
+            self.ip = "processed"
         counter = 0
         while counter < 2:
             self.logger.debug("{} : No of connection attempts".format(counter))
