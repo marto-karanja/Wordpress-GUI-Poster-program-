@@ -76,7 +76,7 @@ class Db(object):
         for table in tables:
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 95 ORDER BY RAND() limit %s ".format(ip = self.ip)
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 ORDER BY RAND() limit %s ".format(ip = self.ip)
 
                 self.logger.info((query + ' '+str(post_no)) )
 
@@ -115,7 +115,7 @@ class Db(object):
         for table in categories.keys():
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 80 and category in ('"+ "','".join(categories[table]) + "') ORDER BY RAND() limit {limit}"
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 and category in ('"+ "','".join(categories[table]) + "') ORDER BY RAND() limit {limit}"
                 query = query.format(ip = self.ip, limit = post_no)
 
                 self.logger.info(query)

@@ -13,3 +13,4 @@ __pycache__/
 /output
 /dist
 /twit/config.py
+config.json
