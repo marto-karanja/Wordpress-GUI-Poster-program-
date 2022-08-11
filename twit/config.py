@@ -1,9 +1,4 @@
-kip_keys = dict(
-	consumer_key='zAGdbz8FkMQNv87BKuP4mpDQe',
-	consumer_secret='tA1DXPKOI0NLMtai1IneDE2xTZbfuHGuyzTD17I83HlULpf5UU',
-	access_token='3308663193-sl8rBjokLqpNr4Vz9buWJ8rr35R0M3oZeg1u8Vk',
-	access_token_secret='zsLMlAINueeYfIIqZBtEcmsNWX5vBFmtJJW9Q1aAPvoDf',
-)
+
 
 messages = [
     '@{} HMU for a quality essay within your deadline',
