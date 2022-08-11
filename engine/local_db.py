@@ -1,10 +1,12 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from engine.models import BannedStrings, PublishedPosts, ProcessingPosts
+from sqlalchemy.orm import scoped_session
+from sqlalchemy.orm import sessionmaker
+from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process
 
 def get_connection(database_url):
-    return create_engine(database_url, echo=True, connect_args={'check_same_thread': False})
+    return create_engine(database_url, echo=False, connect_args={'check_same_thread': False})
 
 def connect_to_db():
     database_url = "{}\{}".format(os.getcwd(), "settings.db")
@@ -60,3 +62,57 @@ def create_session(engine):
     Session = sessionmaker()
     Session.configure(bind=engine)
     return Session()
+
+
+def create_threaded_session(engine):
+    session_factory = sessionmaker(bind=engine)
+    global Session
+    Session = scoped_session(session_factory)
+    session = Session()
+    return session
+
+
+def remove_session():
+    global Session
+    Session.remove()
+
+def save_published_posts(db_session, post):
+    db_session.add(post)
+    try:
+        db_session.commit()
+    except Exception as e:
+        raise
+    else:
+        return
+
+
+def save_short_posts(db_session, post_no):
+    short = ShortPosts()
+    short.link_no = post_no
+    db_session.add(short)
+    try:
+        db_session.commit()
+    except Exception as e:
+        raise
+    else:
+        return
+
+def fetch_published_posts(db_session, limit, offset):
+    posts  = db_session.query(PublishedPosts).filter(PublishedPosts.status == Process.FALSE).limit(limit).offset(offset).all()
+    if len(posts) == 0:
+        return False
+    else:
+        return [(k.link_no, k.website, k.table) for k in posts]
+
+
+def update_post(db_session, post_no):
+    post = db_session.query(PublishedPosts).filter_by(link_no = int(post_no)).first()
+    post.status = Process.TRUE
+
+    db_session.add(post)
+    try:
+        db_session.commit()
+    except Exception as e:
+        raise
+    else:
+        return

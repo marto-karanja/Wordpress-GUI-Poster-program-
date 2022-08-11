@@ -10,10 +10,6 @@ from engine.cleaner import Cleaner
 from engine.db import Db
 from engine.post import WpPost
 from engine.rest_post import RestPost
-from engine.local_db import connect_to_db, create_session, remove_session, save_published_posts, save_short_posts
-from engine.models import PublishedPosts
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import scoped_session
 
 
 
@@ -227,10 +223,7 @@ class Posta():
         self.logger.info("Closing database connection")
         return
 
-    def post_content_rest_method(self, connection, Session, publishing_date, delay, posts, workload, thread_queue, event, window ):
-
-        session = Session()
-
+    def post_content_rest_method(self, connection, publishing_date, delay, posts, workload, thread_queue, event, window ):
         self.delay = delay
         results = {}
         results['Thead start time'] = self.get_current_time()
@@ -243,13 +236,19 @@ class Posta():
 
         # switch to storing published posts in local sqllite database
         # fetch engine, create session
-
-
+        if connection is None:
+            db = Db()
+        else:
+            db = Db(connection = connection)
         
         self.logger.debug("Finished setting up database connection for %s", workload['site'])
         msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
         self.update_window_reports(window, msg)
 
+        #posts = db.fetch_posts_from_tables( no_of_posts = workload['posts'], tables = workload['table'] )
+
+        # update GUI grid
+        #self.update data grid
         
         short_content = []
         published_posts = []
@@ -285,29 +284,24 @@ class Posta():
 
                             
                             # update published table
-                            published = PublishedPosts()
-                            published.title = title
-                            published.content = content
-                            published.link_no = post['link_no']
-                            published.website = workload['site']
+                            published = {}
+                            published['title'] = title
+                            published['content'] = content
+                            published['link_no'] = post['link_no']
+                            published['website'] = workload['site']
                             
-                            published.table = table
+                            published['table'] = table
 
                             # append to published list
                             published_posts.append(post['link_no'])
 
                             # update db records
-                            try:
-                                save_published_posts(session, published)
-                            except Exception as e:
-                                msg = "{}: Post No: [{}] was not stored in the database - [Thread: {}]".format(self.get_current_time(), post['link_no'], threading.currentThread().getName())
-                                self.update_gui(window, msg )
-                                self.logger.error(msg, exc_info=1)
-                            else:
-                                #db.update_posts(published)
-                                msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published.website, threading.currentThread().getName())
-                                self.update_gui(window, msg )
-                                self.logger.debug(msg)
+                            db.update_posts(published)
+                            
+                            
+                            msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published['website'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+                            self.logger.debug(msg)
                             delay = random.randint(int(self.delay/2), int(self.delay))
                             self.logger.info("Script paused execution for {} secs".format(delay))
                             self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
@@ -320,30 +314,12 @@ class Posta():
 
                     else:
                         # update the short content strings on the db
-                        msg = "{}: Short string. Failed to publish [{}]. {} posts remaining".format(self.get_current_time(), post['link_no'], len(contents)-count-1)
-                        self.update_gui(window, msg)
+                        self.update_gui(window, "{}: Short string. Failed to publish [{}]. {} posts remaining".format(self.get_current_time(), post['link_no'], len(contents)-count-1))
                         #self.update_gui(window, "{}: Updating short record string:[{}]".format(current_time, post['link_no']))
-                        
-                        #db.update_short_posts(table, post['link_no'])
+                        self.logger.debug("Updating short record string:[%s]",post['link_no'])
+                        db.update_short_posts(table, post['link_no'])
                         # update short content
-
-
-                        # save_short_posts(session, post['link_no'])
-
                         short_content.append(post['link_no'])
-                        # update short content in database
-
-                        try:
-                            save_short_posts(session(), post['link_no'])
-                        except Exception as e:
-                            msg = "{}: Short Post No: [{}] was not stored in the database - [Thread: {}]".format(self.get_current_time(), post['link_no'], threading.currentThread().getName())
-                            self.update_gui(window, msg )
-                            self.logger.error(msg, exc_info=1)
-                        else:
-                            msg = "{}: Short string. updated in database [{}].".format(self.get_current_time(), post['link_no'])
-                            self.update_gui(window, msg )
-                            self.logger.debug("Updating short record string:[%s]",post['link_no'])
-
                 
                 else:
                     self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
@@ -371,18 +347,13 @@ class Posta():
         self.update_window_reports(window, "{}: [{}] Posts failed to publish [{}][{}]".format(self.get_current_time(), total_fetched_posts - len(published_posts),thread_name, workload['site']))
         self.update_window_reports(window, "**************************")
         # Log short content length
-
-        Session.remove()
   
         #db.close_conn()
-        #self.logger.info("Closing database connection")
-        #event.set()
+        self.logger.info("Closing database connection")
         return
 
 
-    def post_category_rest_method(self, connection,Session, publishing_date, delay, posts, workload, thread_queue, event, window, categories ):
-        session = Session()
-
+    def post_category_rest_method(self, connection, publishing_date, delay, posts, workload, thread_queue, event, window, categories ):
         self.delay = delay
         results = {}
         results['Thead start time'] = self.get_current_time()
@@ -441,29 +412,25 @@ class Posta():
 
                             
                             # update published table
-                            published = PublishedPosts()
-                            published.title = title
-                            published.content = content
-                            published.link_no = post['link_no']
-                            published.website = workload['site']
+                            published = {}
+                            published['title'] = title
+                            published['content'] = content
+                            published['link_no'] = post['link_no']
+                            published['website'] = workload['site']
                             
-                            published.table = table
+                            published['table'] = table
 
                             # append to published list
                             published_posts.append(post['link_no'])
-                            
+
                             # update db records
-                            try:
-                                save_published_posts(session, published)
-                            except Exception as e:
-                                msg = "{}: Post No: [{}] was not stored in the database - [Thread: {}]".format(self.get_current_time(), post['link_no'], threading.currentThread().getName())
-                                self.update_gui(window, msg )
-                                self.logger.error(msg, exc_info=1)
-                            else:
-                                #db.update_posts(published)
-                                msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published.website, threading.currentThread().getName())
-                                self.update_gui(window, msg )
-                                self.logger.debug(msg)
+                            self.logger.info("Updating database")
+                            db.update_posts(published)
+                            
+                            
+                            msg = "{}: Post No: [{}] published and updated to [{}] - [Thread: {}]".format(self.get_current_time(), post['link_no'],published['website'], threading.currentThread().getName())
+                            self.update_gui(window, msg )
+                            self.logger.debug(msg)
                             delay = random.randint(int(self.delay/2), int(self.delay))
                             self.logger.info("Script paused execution for {} secs".format(delay))
                             self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
@@ -479,19 +446,9 @@ class Posta():
                         self.update_gui(window, "{}: Short string. Failed to publish [{}]. {} posts remaining".format(self.get_current_time(), post['link_no'], len(contents)-count-1))
                         #self.update_gui(window, "{}: Updating short record string:[{}]".format(current_time, post['link_no']))
                         self.logger.debug("Updating short record string:[%s]",post['link_no'])
-
+                        db.update_short_posts(table, post['link_no'])
+                        # update short content
                         short_content.append(post['link_no'])
-                        try:
-                            save_short_posts(session(), post['link_no'])
-                        except Exception as e:
-                            msg = "{}: Short Post No: [{}] was not stored in the database - [Thread: {}]".format(self.get_current_time(), post['link_no'], threading.currentThread().getName())
-                            self.update_gui(window, msg )
-                            self.logger.error(msg, exc_info=1)
-                        else:
-                            msg = "{}: Short string. updated in database [{}].".format(self.get_current_time(), post['link_no'])
-                            self.update_gui(window, msg )
-                            self.logger.debug("Updating short record string:[%s]",post['link_no'])
-
                 
                 else:
                     self.update_gui(window, "Stopping thread [{}]".format(threading.currentThread().getName()))
@@ -520,9 +477,8 @@ class Posta():
         self.update_window_reports(window, "**************************")
         # Log short content length
   
-        Session.remove()
         #db.close_conn()
-        #self.logger.info("Closing database connection")
+        self.logger.info("Closing database connection")
         return
 
 

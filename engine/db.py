@@ -162,6 +162,27 @@ class Db(object):
             cursor.close()
             return False
 
+        ####----------------------------------------------------
+    def update_db_posts(self, post):
+        """update fetched posts"""
+        cursor = self.conn.cursor()
+        query = "insert into published (link_no, website, table_source) values (%s,%s,%s)"
+        # insert post in table
+        try:
+            cursor.execute(query,(post[0],post[1], post[2]))
+            query ='update '+ post[2] +' set `{ip}` = "True" where link_no = %s'.format(ip = self.ip) 
+            cursor.execute(query, (post[0],))
+            self.conn.commit()
+            self.logger.info("Post No: [%s] updated in db", post[0])
+            cursor.close()
+            return True
+        except:
+            self.conn.rollback()
+            self.logger.warning("Post No: [%s] was not updated to the website due to an insert error", post[0])
+            self.logger.error('Problem with update operation', exc_info=True)
+            cursor.close()
+            return False
+
     def update_short_posts(self, table, post_no):
         """update fetched posts"""
         cursor = self.conn.cursor()

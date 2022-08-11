@@ -20,13 +20,22 @@ from engine.reports_gui import ReportBotFrame
 from engine.category_post import CategoryPostFrame
 from engine.gui.banned_strings_gui import BannedStringsFrame
 from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
-from engine.local_db import get_connection
+from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import scoped_session
 
 
 
 
 from charts.CrawlingReportsFrame import CrawlingReportsFrame
 from engine.gui_grids import GenericTable
+
+
+engine = connect_to_db()
+
+        # now all calls to Session() will create a thread-local session
+session_factory = sessionmaker(bind=engine)
+Session = scoped_session(session_factory)
 
 class PostaPanel(wx.Panel):
     #----------------------------------------------------------------------
@@ -40,6 +49,8 @@ class PostaPanel(wx.Panel):
         self.db = db
         self.posta = Posta()
         self.active_threads = []
+
+        self.engine = False
 
         self.connection = None
 
@@ -373,9 +384,8 @@ class PostaPanel(wx.Panel):
         self.quit_event = threading.Event()
 
 
-        # remove database object from loop
-        
 
+        # remove database object from loop
         for site in self.data_table.data:
 
             single_setting = {}
@@ -403,12 +413,11 @@ class PostaPanel(wx.Panel):
                     posts = self.db.fetch_posts_from_tables( no_of_posts = single_setting['posts'], tables = single_setting['table'] )
 
                     self.logger.debug("Beginning posting process.....")
-                    #self.posta.post_content(single_setting)
                     # launch threads
-                    
+                                        
                     self.log_message_to_report_txt_field(f"Fetching {len(posts)} from database")
         
-                    posta = threading.Thread(target= self.posta.post_content_rest_method, args=(self.connection, publishing_date, delay, posts, single_setting, self.order_queue, self.quit_event, self), daemon=True)
+                    posta = threading.Thread(target= self.posta.post_content_rest_method, args=(self.connection, Session, publishing_date, delay, posts, single_setting, self.order_queue, self.quit_event, self), daemon=True)
                     self.active_threads.append(posta)
                     posta.start()
             else:
@@ -416,17 +425,28 @@ class PostaPanel(wx.Panel):
                 # break out of the loop
                 break
 
+        #add summary thread
+        final_thread = threading.Thread(target = self.wait_for_thread_completion, args=(self.order_queue, self.quit_event, self.db, self.active_threads))
+        self.logger.info("Starting the summary thread")
+        final_thread.start()
         
-        # join threads
-        """
-        for t in self.active_threads:
-            t.join()"""
 
+    def wait_for_thread_completion(self, thread_queue, event, db, active_threads):
         # retrieve queue
+        self.logger.info("Waiting for all threads to complete")
+
+        for t in self.active_threads:
+            t.join()
         results  = []
-        while not self.order_queue.empty() or self.quit_event.isSet():
+        while not thread_queue.empty() or event.isSet():
+            self.logger.info("Waiting for queue input")
             results.append(self.order_queue.get())
-            self.log_message_to_report_txt_field("----"*15)
+            time.sleep(5)
+            
+        self.log_message_to_report_txt_field("----"*15)
+        print("All threads have completed running")
+        self.log_message_to_report_txt_field("All threads have completed running")
+        self.log_message_to_report_txt_field("==================================")
         for result in results:
             for key, value in result.items():
                 if key in ['Posts Published','Short Posts']:
@@ -434,6 +454,36 @@ class PostaPanel(wx.Panel):
                 else:
                     msg = "{}: {}".format(key, value)
                 self.log_message_to_report_txt_field(msg)
+
+
+        ### update database connection
+        # open sqllite
+        self.log_message_to_report_txt_field("[Updating database records]")
+        session = Session()
+        posts = True
+        offset = 0
+        cursor = 1
+        while posts is not False:
+            posts = fetch_published_posts(session, 1000, offset)
+            self.logger.info("Updating posts attempt %s", cursor)
+            offset += 1000
+            cursor +=1
+            if posts is not False:
+                for post in posts:
+                    # update published tables and processed posts
+                    db.update_db_posts(post)
+                    # update local sqllite db
+                    update_post(session, post[0])
+        # fetch ids where processed = false
+        # insert into published
+        # update shprt posts
+        self.log_message_to_report_txt_field("[Completing database process]")
+        self.log_message_to_report_txt_field("*****************************")
+        self.log_message_to_report_txt_field("[All processes completed]")
+        self.log_message_to_report_txt_field("*****************************")
+        Session.remove()
+        return
+        
 
 #-------------------------------------------------------------------
     def beginCategoryRestPosting(self, evt, categories):
@@ -477,10 +527,11 @@ class PostaPanel(wx.Panel):
                 if site[5] == "1":
 
                     self.logger.debug("Beginning posting process.....")
-                    #self.posta.post_content(single_setting)
+                    
+
                     # launch threads
         
-                    posta = threading.Thread(target= self.posta.post_category_rest_method, args=(self.connection, publishing_date, delay, posts, single_setting, self.order_queue, self.quit_event, self, categories), daemon=True)
+                    posta = threading.Thread(target= self.posta.post_category_rest_method, args=(self.connection, Session, publishing_date, delay, posts, single_setting, self.order_queue, self.quit_event, self, categories), daemon=True)
                     self.active_threads.append(posta)
                     posta.start()
             else:
@@ -488,24 +539,10 @@ class PostaPanel(wx.Panel):
                 # break out of the loop
                 break
 
-        
-        # join threads
-        """
-        for t in self.active_threads:
-            t.join()"""
-
-        # retrieve queue
-        results  = []
-        while not self.order_queue.empty() or self.quit_event.isSet():
-            results.appaend(self.order_queue.get())
-            self.log_message_to_report_txt_field("----"*15)
-        for result in results:
-            for key, value in result.items():
-                if key in ['Posts Published','Short Posts']:
-                    msg = "{}: {}".format(key, len(value))
-                else:
-                    msg = "{}: {}".format(key, value)
-                self.log_message_to_report_txt_field(msg)
+         #add summary thread
+        final_thread = threading.Thread(target = self.wait_for_thread_completion, args=(self.order_queue, self.quit_event, self.db, self.active_threads))
+        self.logger.info("Starting the summary thread")
+        final_thread.start()
 
                 
 
