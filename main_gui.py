@@ -47,6 +47,7 @@ class PostaPanel(wx.Panel):
         # get a logger
         self.logger = logger or logging.getLogger(__name__)
         self.db = db
+        
         self.posta = Posta()
         self.active_threads = []
 
@@ -223,8 +224,11 @@ class PostaPanel(wx.Panel):
         connection["password"] = config["database"]["remote"]["password"]
 
 
+        # close existing db connection
+        self.db.close_conn()
         self.connection = connection        
         self.db = Db(logger = self.logger, connection = connection)
+        self.db.start_conn()
         self.tables_summary = self.db.fetch_tables_summary()
         self.databaseListBox.Destroy()
         self.databaseListBox = wx.CheckListBox(parent = self, id = -1, choices=list(self.tables_summary.keys()), style=wx.LB_MULTIPLE, name="databaseListBox")
@@ -383,6 +387,8 @@ class PostaPanel(wx.Panel):
         self.order_queue = Queue(maxsize = 500)
         self.quit_event = threading.Event()
 
+        self.db.start_conn()
+
 
 
         # remove database object from loop
@@ -425,6 +431,8 @@ class PostaPanel(wx.Panel):
                 # break out of the loop
                 break
 
+        self.db.close_conn()
+
         #add summary thread
         final_thread = threading.Thread(target = self.wait_for_thread_completion, args=(self.order_queue, self.quit_event, self.db, self.active_threads))
         self.logger.info("Starting the summary thread")
@@ -463,6 +471,7 @@ class PostaPanel(wx.Panel):
         posts = True
         offset = 0
         cursor = 1
+        db.start_conn()
         while posts is not False:
             posts = fetch_published_posts(session, 1000, offset)
             self.logger.info("Updating posts attempt %s", cursor)
@@ -471,7 +480,10 @@ class PostaPanel(wx.Panel):
             if posts is not False:
                 for post in posts:
                     # update published tables and processed posts
-                    db.update_db_posts(post)
+                    if db.update_db_posts(post):
+                        self.log_message_to_txt_field("Updated Post in online database [{}]".format(post[0]))
+                    else:
+                        self.log_message_to_txt_field("Failed to Updated Post in online database [{}]".format(post[0]))
                     # update local sqllite db
                     update_post(session, post[0])
         # fetch ids where processed = false
@@ -481,6 +493,7 @@ class PostaPanel(wx.Panel):
         self.log_message_to_report_txt_field("*****************************")
         self.log_message_to_report_txt_field("[All processes completed]")
         self.log_message_to_report_txt_field("*****************************")
+        db.close_conn()
         Session.remove()
         return
         
@@ -502,6 +515,7 @@ class PostaPanel(wx.Panel):
         self.order_queue = Queue(maxsize = 500)
         self.quit_event = threading.Event()
         
+        self.db.start_conn()
 
         for site in self.data_table.data:
 
@@ -539,6 +553,7 @@ class PostaPanel(wx.Panel):
                 # break out of the loop
                 break
 
+        self.db.close_conn()
          #add summary thread
         final_thread = threading.Thread(target = self.wait_for_thread_completion, args=(self.order_queue, self.quit_event, self.db, self.active_threads))
         self.logger.info("Starting the summary thread")
@@ -660,6 +675,7 @@ class PostaBotFrame(wx.Frame):
         self.logger = logger or logging.getLogger(__name__)
 
         self.db = Db(self.logger)
+        self.db.start_conn()
         tables_summary = self.db.fetch_tables_summary()
         # include available posts
 

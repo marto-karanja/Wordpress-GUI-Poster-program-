@@ -186,6 +186,7 @@ class CategoryPostPanel(wx.Panel):
             processed_categories[category] = category_list
         print(processed_categories)
         self.parent_window.beginCategoryRestPosting(evt, processed_categories)
+        self.Hide()
 
 
 

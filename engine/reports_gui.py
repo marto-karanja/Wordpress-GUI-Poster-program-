@@ -27,6 +27,7 @@ class ReportBotFrame(wx.Frame):
         self.logger = logger or logging.getLogger(__name__)
 
         self.db = Db(self.logger)
+        self.db.start_conn()
         tables = self.db.fetch_tables()
         summary_statistics = self.db.fetch_table_statistics()
 

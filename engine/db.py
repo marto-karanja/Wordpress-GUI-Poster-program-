@@ -19,25 +19,35 @@ class Db(object):
             if self.create_connection(connection):
                 break
             counter = counter + 1
-        
+        self.conn =  False
+        #self.conn = self.return_connection(self.connection_details)
         self.logger.debug("Database connection created")
+        
+    def start_conn(self):
+        if self.conn is False or None:
+            self.conn = self.return_connection(self.connection_details)
 
     def get_ip_address(self):
         hostname=socket.gethostname()
-        return socket.gethostbyname(hostname) 
+        return socket.gethostbyname(hostname)
+        #return "191.101.130.6" 
 
     def create_connection(self, connection):
         
         if connection is None:
-            self.conn = mysql.connector.connect(host="localhost", user="kush", passwd="incorrect", db="crawls", charset="utf8")
+            self.connection_details = {"host":"localhost", "user":"kush", "password":"incorrect", "database":"crawls", "charset":"utf8"}
         else:
-            try:
-                self.conn = mysql.connector.connect(host = connection["host"], user = connection["user"], passwd = connection["password"], db=connection["database"], charset="utf8")
-            except mysql.connector.Error as err:
-                self.logger.error("Error connecting to database", exc_info = 1)
-                return False
-            else:
-                return True
+            self.connection_details = connection
+
+    def return_connection(self, connection_details):
+        try: 
+            connection = mysql.connector.connect(host = connection_details["host"], user = connection_details["user"], passwd = connection_details["password"], db=connection_details["database"], charset="utf8")
+        except mysql.connector.Error as err:
+            self.logger.error("Error connecting to database", exc_info = 1)
+            return False
+        else:
+            return connection
+
     
     def fetch_posts(self, month=None,year=None, category=None, posts=None, table=None):
         """method to fetch posts"""
@@ -77,6 +87,11 @@ class Db(object):
             # fetch random
             if post_no != 0:
                 query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 ORDER BY RAND() limit %s ".format(ip = self.ip)
+                """select coursehero_content.link_no, coursehero_content.title, coursehero_content.content, content_length, category 
+                from coursehero_content
+                left JOIN published on coursehero_content.link_no = published.link_no
+                where content_length > 75 and published.link_no is null  ORDER BY RAND() limit 1000"""
+
 
                 self.logger.info((query + ' '+str(post_no)) )
 
@@ -316,4 +331,5 @@ class Db(object):
                 
     def close_conn(self):
         self.conn.close()
+        self.conn = False
     

@@ -1,4 +1,9 @@
-
+kip_keys = dict(
+	consumer_key='',
+	consumer_secret='',
+	access_token='',
+	access_token_secret='',
+)
 
 messages = [
     '@{} HMU for a quality essay within your deadline',
