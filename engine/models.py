@@ -32,8 +32,15 @@ class ShortPosts(Base):
     id = Column(Integer, primary_key=True)
     link_no = Column(Integer)
     status = Column(Enum(Process), server_default=Process.FALSE.value)
+    table_name = Column(String)
 
    
 class ProcessingPosts(Base):
     __tablename__ = 'Processing Posts'
     id = Column(Integer, primary_key=True)
+
+class TitleLength(Base):
+    __tablename__ = 'Title Length'
+    id = Column(Integer, primary_key=True)
+    title_length = Column(String, server_default='25')
+    

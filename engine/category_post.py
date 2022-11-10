@@ -57,6 +57,7 @@ class CategoryPostFrame(wx.Frame):
 class CategoryPostPanel(wx.Panel):
     def __init__(self, parent, category_summary, parent_window, logger = None):
         wx.Panel.__init__(self, parent)
+        self.parent = parent
 
         self.parent_window = parent_window
 
@@ -185,8 +186,10 @@ class CategoryPostPanel(wx.Panel):
                 category_list.append(self.combo_dictionary[category][l])
             processed_categories[category] = category_list
         print(processed_categories)
+        self.parent.Hide()
         self.parent_window.beginCategoryRestPosting(evt, processed_categories)
-        self.Hide()
+        wx.Window.Close()
+        
 
 
 

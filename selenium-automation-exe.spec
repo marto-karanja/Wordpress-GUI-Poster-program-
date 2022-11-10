@@ -27,7 +27,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
-          console=True , icon='gui/posta.ico')
+          console=False , icon='gui/posta.ico')
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,

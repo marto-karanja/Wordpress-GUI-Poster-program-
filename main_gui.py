@@ -1,6 +1,6 @@
 import os
 import sys
-from turtle import delay
+from turtle import delay, title
 import wx
 import csv
 import wx.adv
@@ -20,7 +20,8 @@ from engine.reports_gui import ReportBotFrame
 from engine.category_post import CategoryPostFrame
 from engine.gui.banned_strings_gui import BannedStringsFrame
 from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
-from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post
+from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts
+
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 
@@ -47,8 +48,15 @@ class PostaPanel(wx.Panel):
         # get a logger
         self.logger = logger or logging.getLogger(__name__)
         self.db = db
+        session = Session()
+        self.update_post_count = str(count_published_posts(session))
+        session.close()
+        self.logger.info(self.update_post_count)
+
+
+
         
-        self.posta = Posta()
+        self.posta = Posta(logger = self.logger)
         self.active_threads = []
 
         self.engine = False
@@ -79,6 +87,8 @@ class PostaPanel(wx.Panel):
         self.display_database_tables(self.control_panel_sizer)
 
         control_button_sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Publish")
+        update_button_sizer = wx.StaticBoxSizer(wx.VERTICAL, self, "Reconcile Database")
+
         # add date sizer
         date_button_sizer = wx.StaticBoxSizer(wx.HORIZONTAL, self, "Bot Settings")
 
@@ -126,12 +136,20 @@ class PostaPanel(wx.Panel):
 
         #control_button_sizer.Add(delay_label, flag=wx.ALIGN_CENTER, border=5)
         date_button_sizer.Add(delay_box_sizer, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
-        
-        #date_button_sizer.Add(date_label, flag=wx.ALIGN_CENTER, border=5)
+
+
         date_button_sizer.Add(date_box_sizer, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
         date_button_sizer.Add(month_box_sizer, flag=wx.ALIGN_CENTER | wx.ALL, border=5)
 
-
+        self.abstract_checkbox = wx.CheckBox(self, -1, "Add Abstract while publishing", pos=wx.DefaultPosition, size=wx.DefaultSize, style=0, name="checkBox")
+        control_button_sizer.Add(self.abstract_checkbox, flag=wx.ALIGN_LEFT, border=5)
+        
+        
+        self.updated_posts_label = wx.StaticText(self,-1, label= f"{self.update_post_count} posts need to be updated")
+        update_button_sizer.Add(self.updated_posts_label, flag=wx.ALIGN_LEFT, border=5)
+        
+        btnData = [("Update Posts to remote Db", self.updatePostsDb)]
+        self.create_buttons(update_button_sizer, btnData, flag=wx.ALL|wx.EXPAND)
 
 
 
@@ -142,6 +160,8 @@ class PostaPanel(wx.Panel):
             ("Stop Posting",  self.stopPosting),
             ("Post By Category", self.postByCategory)]
         self.create_buttons(control_button_sizer, btnData, flag=wx.ALL|wx.EXPAND)
+        
+        
 
 
 
@@ -156,11 +176,12 @@ class PostaPanel(wx.Panel):
         #create grid buttons
         btnData = [
             ("Load Websites", self.loadWebsites),
-            ("Connect To Remote Database", self.connectRemoteDb)]
+            ("Connect To Remote Database", self.connectRemoteDb),
+            ("Set Title Length", self.OnSetTitleLength)]
 
         self.grid_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.create_buttons(self.grid_button_sizer, btnData)
+        self.create_buttons(self.grid_button_sizer, btnData, flag = wx.EXPAND|wx.ALL)
 
 
         # create text area
@@ -185,7 +206,10 @@ class PostaPanel(wx.Panel):
 
         
         self.top_right_vertical_sizer.Add(self.control_panel_sizer, 0 , flag = wx.EXPAND)
+        
+        self.top_right_vertical_sizer.Add(update_button_sizer, 0, flag = wx.EXPAND)
         self.top_right_vertical_sizer.Add(date_button_sizer, 0 , flag = wx.EXPAND)
+        
         self.top_right_vertical_sizer.Add(control_button_sizer, 0 , flag = wx.EXPAND)
         
         
@@ -258,6 +282,128 @@ class PostaPanel(wx.Panel):
     def display_database_tables(self, sizer):
             self.databaseListBox = wx.CheckListBox(parent = self, id = -1, choices=list(self.tables_summary.keys()), style=wx.LB_MULTIPLE, name="databaseListBox")
             sizer.Add(self.databaseListBox, 1, wx.EXPAND)
+
+
+    #-----------------------------------------------------------------
+    def updatePostsDb(self, evt):
+        self.log_message_to_report_txt_field("[Begining database update process]")
+        update_thread = threading.Thread(target = self.update_db_thread)
+        self.logger.info("Starting the update thread")
+        update_thread.start()
+
+    def update_db_thread(self):
+        session = Session()
+        db = Db()
+        posts = True
+        #offset = 0
+        cursor = 1
+        
+        posts = []
+        while posts is not False:
+            results = {}
+            #posts = fetch_published_posts(session, 800, offset)
+            posts = fetch_published_posts(session, 800)
+            self.logger.info("Updating posts attempt %s", cursor)
+            #offset += 800
+            cursor +=1
+            processed_posts = []
+            if posts is not False:
+                for post in posts:
+                    if not post[2] in results:
+                        results[post[2]] = []
+                    results[post[2]].append(post)
+                for item in results.keys():
+                    self.logger.info("%s : %s", item, len(results[item]))
+                    self.log_message_to_txt_field("Updating database....")
+                    if db.update_multiple_posts(results[item]):
+                        self.log_message_to_txt_field("Updated Posts in online database: [{}]".format(len(results[item])))
+                        if db.insert_multiple_posts(results[item]):
+                            self.log_message_to_txt_field("Inserted Posts in online database: [{}]".format(len(results[item])))
+                            for post in results[item]:
+                                processed_posts.append(post[0])
+                        else:
+                            self.log_message_to_txt_field("Failed to Update Posts in online database: [{}]".format(len(results[item])))
+
+                    else:
+                        self.log_message_to_txt_field("Failed to Update Posts in online database: [{}]".format(len(results[item])))
+
+                    if delete_multiple_posts(session, processed_posts):
+                        self.logger.info("%s posts deleted in local db", len(processed_posts))
+                        self.update_post_count = str(count_published_posts(session))
+                        self.updated_posts_label.SetLabel(f"{self.update_post_count} posts need to be updated")
+                        
+                    else:
+                        self.logger.error("Unable to update local db")
+                    processed_posts = []
+        
+                # update local sqllite db
+                ## to do change to delete post
+                #self.logger.info(processed_posts)
+                
+            else:
+                posts = False        # fetch ids where processed = false
+        # insert into published
+
+        # update short posts
+        self.update_short_posts()
+
+        # update shprt posts
+        self.log_message_to_report_txt_field("[Completing database process]")
+        self.log_message_to_report_txt_field("*****************************")
+        self.log_message_to_report_txt_field("[All processes completed]")
+        self.log_message_to_report_txt_field("*****************************")
+        self.update_post_count = str(count_published_posts(session))
+        self.updated_posts_label.SetLabel(f"{self.update_post_count} posts need to be updated")
+        self.log_message_to_txt_field("Finished updating database process")
+        self.log_message_to_txt_field("**********************************")
+
+
+    def update_short_posts(self):
+        session = Session()
+        db = Db()
+        short_posts = True
+        cursor = 0       
+
+        while short_posts is not False:
+            results = {}
+            short_posts = fetch_short_posts(session, 800)
+            self.logger.info("Updating short posts attempt %s", cursor)
+            #offset += 800
+            cursor +=1
+            processed_posts = []
+            if short_posts is not False:
+                for post in short_posts:
+                    if not post[1] in results:
+                        results[post[1]] = []
+                    results[post[1]].append(post)
+                for item in results.keys():
+                    self.logger.info("%s : %s", item, len(results[item]))
+                    self.log_message_to_txt_field("Updating database....")
+                    if db.update_multiple_short_posts(results[item]):
+                        self.log_message_to_txt_field("Updated short Posts in online database: [{}]".format(len(results[item])))
+                        processed_posts.append(post[0])
+
+                    else:
+                        self.log_message_to_txt_field("Failed to Update Posts in online database: [{}]".format(len(results[item])))
+
+                    if delete_multiple_short_posts(session, processed_posts):
+                        self.logger.info("%s posts deleted in local db", len(processed_posts))
+                        
+                        
+                    else:
+                        self.logger.error("Unable to update local db")
+                    processed_posts = []
+        
+                # update local sqllite db
+                ## to do change to delete post
+                #self.logger.info(processed_posts)
+                
+            else:
+                short_posts = False
+
+
+                    
+
 
            
 
@@ -368,9 +514,50 @@ class PostaPanel(wx.Panel):
             year = self.years[int(year)]
         return (month, year)
 
+#--------------------------------------------------------------
+    def fetch_engine(self):
+        return connect_to_db()
+
+    #-------------------------------------------------------------
+    def OnSetTitleLength(self, evt):
+        # get title length
+        session = Session()
+        title_length = get_title_length(session)
+        
+            
+
+        message = "Set title length. current length {}".format(title_length)
+        title_length = wx.GetTextFromUser(message, caption="Input text", default_value="", parent=None)
+
+        if title_length != "":
+            try:
+                title_length = int(title_length)
+
+            except:
+                wx.MessageBox("Input needs to be a number", "Success", wx.OK | wx.ICON_ERROR)
+
+            else:
+                try:
+                    set_title_length(session, title_length)
+                except Exception as e:
+                    self.logger.error("Unable to add string to database [%s]", title_length, exc_info=1)
+                else:
+                    wx.MessageBox("Successfully saved to database", "Success", wx.OK | wx.ICON_INFORMATION)
+                
+        # close session
+        session.close()
+
 
 #-------------------------------------------------------------------
     def beginRestPosting(self, evt):
+        
+         #launch thread 
+        launch_thread = threading.Thread(target = self.launch_child_threads)
+        self.logger.info("Launching the launcher thread")
+        launch_thread.start()
+    
+    def launch_child_threads(self):
+
         delay = self.delay_combo_box.GetSelection()
         if delay == -1:
             delay = self.delay_settings["2 Minutes"]
@@ -388,6 +575,8 @@ class PostaPanel(wx.Panel):
         self.quit_event = threading.Event()
 
         self.db.start_conn()
+
+        offset = 0
 
 
 
@@ -416,7 +605,13 @@ class PostaPanel(wx.Panel):
                 if site[5] == "1":            
                     # fetch posts
 
-                    posts = self.db.fetch_posts_from_tables( no_of_posts = single_setting['posts'], tables = single_setting['table'] )
+                    # thread to launch main thread
+                    # abstract
+                    # upload database count
+
+                    posts = self.db.fetch_posts_from_tables( no_of_posts = single_setting['posts'], offset= offset, tables = single_setting['table'] )
+                    #update offset value 
+                    offset = offset + int(single_setting['posts'])
 
                     self.logger.debug("Beginning posting process.....")
                     # launch threads
@@ -465,6 +660,7 @@ class PostaPanel(wx.Panel):
 
 
         ### update database connection
+        """
         # open sqllite
         self.log_message_to_report_txt_field("[Updating database records]")
         session = Session()
@@ -477,15 +673,17 @@ class PostaPanel(wx.Panel):
             self.logger.info("Updating posts attempt %s", cursor)
             offset += 1000
             cursor +=1
+            
             if posts is not False:
                 for post in posts:
                     # update published tables and processed posts
                     if db.update_db_posts(post):
-                        self.log_message_to_txt_field("Updated Post in online database [{}]".format(post[0]))
+                        self.log_message_to_txt_field("Updated Post in online database. Link No: [{}]".format(post[0]))
                     else:
                         self.log_message_to_txt_field("Failed to Updated Post in online database [{}]".format(post[0]))
                     # update local sqllite db
-                    update_post(session, post[0])
+                    ## to do change to delete post
+                    delete_post(session, post[0])
         # fetch ids where processed = false
         # insert into published
         # update shprt posts
@@ -493,13 +691,30 @@ class PostaPanel(wx.Panel):
         self.log_message_to_report_txt_field("*****************************")
         self.log_message_to_report_txt_field("[All processes completed]")
         self.log_message_to_report_txt_field("*****************************")
+        self.log_message_to_txt_field("Finished updating database process")
+        self.update_post_count = str(count_published_posts(session))
+        self.updated_posts_label.SetLabel(f"{self.update_post_count} posts need to be updated")
         db.close_conn()
-        Session.remove()
+        Session.remove()"""
+        self.log_message_to_report_txt_field("[Begining database update process]")
+        update_thread = threading.Thread(target = self.update_db_thread)
+        self.logger.info("Starting the update thread")
+        update_thread.start()
         return
         
 
 #-------------------------------------------------------------------
     def beginCategoryRestPosting(self, evt, categories):
+
+        launch_thread = threading.Thread(target = self.launch_child_category_threads, args=(categories,))
+        self.logger.info("Launching the launcher thread")
+        launch_thread.start()
+
+
+    def launch_child_category_threads(self, categories):
+        self.logger.info("Child thread categories")
+        self.logger.info(categories)
+        
         delay = self.delay_combo_box.GetSelection()
         if delay == -1:
             delay = self.delay_settings["2 Minutes"]
@@ -517,6 +732,8 @@ class PostaPanel(wx.Panel):
         
         self.db.start_conn()
 
+        offset = 0
+
         for site in self.data_table.data:
 
             single_setting = {}
@@ -530,7 +747,11 @@ class PostaPanel(wx.Panel):
             
             
 
-            posts = self.db.fetch_category_posts_from_tables( no_of_posts = single_setting['posts'], categories = categories )
+            posts = self.db.fetch_category_posts_from_tables( no_of_posts = single_setting['posts'], offset=offset, table_names = categories )
+
+            #update offset value 
+            offset = offset + int(single_setting['posts'])
+
             if len(tables_choosen) != 0:
 
                 single_setting['table'] = [self.tables_summary[x] for x in tables_choosen]
@@ -750,6 +971,8 @@ class PostaBotFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, handler, menuItem)
 
     def OnCloseWindow(self, event):
+        if self.engine:
+            self.engine.dispose()
         self.db.close_conn()
         self.Destroy()
 
@@ -778,9 +1001,14 @@ class PostaBotFrame(wx.Frame):
         frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
         frame.Show(True)
 
+
+
+
     # to do
     # launch banned strings frame
     # delete or create strings
+
+
 
 
 
@@ -964,4 +1192,5 @@ if __name__ == '__main__':
     app = PostaBotApp(False, logger)
     #wx.lib.inspection.InspectionTool().Show()
     app.MainLoop()
+
 

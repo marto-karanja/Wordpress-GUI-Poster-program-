@@ -20,7 +20,7 @@ class Db(object):
                 break
             counter = counter + 1
         self.conn =  False
-        #self.conn = self.return_connection(self.connection_details)
+        self.conn = self.return_connection(self.connection_details)
         self.logger.debug("Database connection created")
         
     def start_conn(self):
@@ -73,7 +73,7 @@ class Db(object):
     
     
     ####----------------------------------------------------
-    def fetch_posts_from_tables(self, no_of_posts = None, tables = None):
+    def fetch_posts_from_tables(self, no_of_posts = None, offset = None, tables = None):
 
         #create cursor object
         cursor = self.conn.cursor(dictionary=True)
@@ -81,12 +81,13 @@ class Db(object):
         table_results = {}
         no_of_posts = int(no_of_posts)
         post_no = int(no_of_posts/len(tables))
+        offset = int(offset/len(tables))
 
 
         for table in tables:
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 ORDER BY RAND() limit %s ".format(ip = self.ip)
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 ORDER BY RAND() limit %s offset {offset} ".format(ip = self.ip, offset = offset)
                 """select coursehero_content.link_no, coursehero_content.title, coursehero_content.content, content_length, category 
                 from coursehero_content
                 left JOIN published on coursehero_content.link_no = published.link_no
@@ -116,22 +117,25 @@ class Db(object):
 
 
     ####----------------------------------------------------
-    def fetch_category_posts_from_tables(self, no_of_posts = None, categories = None):
+    def fetch_category_posts_from_tables(self, no_of_posts = None, offset=None, table_names = None):
+        self.logger.debug(table_names)
 
         #create cursor object
         cursor = self.conn.cursor(dictionary=True)
 
         table_results = {}
         no_of_posts = int(no_of_posts)
-        tables = list(categories.keys())
+        tables = list(table_names.keys())
+        tables = table_names
         post_no = int(no_of_posts/len(tables))
+        offset = int(offset/len(tables))
 
 
-        for table in categories.keys():
+        for table in table_names.keys():
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 and category in ('"+ "','".join(categories[table]) + "') ORDER BY RAND() limit {limit}"
-                query = query.format(ip = self.ip, limit = post_no)
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 and category in ('"+ "','".join(table_names[table]) + "') ORDER BY RAND() limit {limit} offset {offset}"
+                query = query.format(ip = self.ip, limit = post_no, offset = offset)
 
                 self.logger.info(query)
 
@@ -194,6 +198,67 @@ class Db(object):
         except:
             self.conn.rollback()
             self.logger.warning("Post No: [%s] was not updated to the website due to an insert error", post[0])
+            self.logger.error('Problem with update operation', exc_info=True)
+            cursor.close()
+            return False
+
+    def update_multiple_posts(self, posts):
+        """Update multiple posts"""
+        cursor = self.conn.cursor()
+        query ='update '+ posts[0][2] +' set `{ip}` = "True" where link_no = %s'.format(ip = self.ip)
+        records_to_update = []
+        for post in posts:
+            records_to_update.append((post[0],))
+            #self.logger.info(records_to_update)
+        try:
+            cursor.executemany(query, records_to_update)
+            self.conn.commit()
+            self.logger.info("[%s] posts updated in db", len(posts))
+            cursor.close()
+            return True
+        except:
+            self.conn.rollback()
+            self.logger.warning("[%s] posts failed to updated in db", len(posts))
+            self.logger.error('Problem with update operation', exc_info=True)
+            cursor.close()
+            return False
+
+    def update_multiple_short_posts(self, posts):
+        """Update multiple posts"""
+        cursor = self.conn.cursor()
+        query ='update '+ posts[0][1] +' set `{ip}` = "True", short = "True" where link_no = %s'.format(ip = self.ip)
+        records_to_update = []
+        for post in posts:
+            records_to_update.append((post[0],))
+            #self.logger.info(records_to_update)
+        try:
+            cursor.executemany(query, records_to_update)
+            self.conn.commit()
+            self.logger.info("[%s] posts updated in db", len(posts))
+            cursor.close()
+            return True
+        except:
+            self.conn.rollback()
+            self.logger.warning("[%s] posts failed to updated in db", len(posts))
+            self.logger.error('Problem with update operation', exc_info=True)
+            cursor.close()
+            return False
+
+    def insert_multiple_posts(self, posts):
+        cursor = self.conn.cursor()
+        query = "insert into published (link_no, website, table_source) values (%s,%s,%s)"
+        records_to_update = []
+        for post in posts:
+            records_to_update.append((post[0],post[1], post[2]))
+        try:
+            cursor.executemany(query, records_to_update)
+            self.conn.commit()
+            self.logger.info("[%s] posts inserted in db", len(posts))
+            cursor.close()
+            return True
+        except:
+            self.conn.rollback()
+            self.logger.warning("[%s] posts failed to insert in db", len(posts))
             self.logger.error('Problem with update operation', exc_info=True)
             cursor.close()
             return False

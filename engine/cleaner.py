@@ -55,3 +55,14 @@ class Cleaner(object):
         #clean_string = meta_content.format(question = content)
         clean_string = content
         return clean_string
+
+    def add_abstract(self, content):
+        content_length = len(content.split())
+        print(content_length)
+        if content_length > 45:
+            excerpt = ' '.join(content.split()[-45:])
+        else:
+            return content
+        meta_content="<table><tr><th>Excerpt</th></tr><tr><td><i>{excerpt}</i></td></tr></table><p>{content}</p>"
+        clean_string = meta_content.format(excerpt = excerpt, content = content)
+        return clean_string

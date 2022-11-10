@@ -10,7 +10,7 @@ from engine.cleaner import Cleaner
 from engine.db import Db
 from engine.post import WpPost
 from engine.rest_post import RestPost
-from engine.local_db import connect_to_db, create_session, remove_session, save_published_posts, save_short_posts
+from engine.local_db import connect_to_db, create_session, remove_session, save_published_posts, save_short_posts, get_title_length, count_published_posts
 from engine.models import PublishedPosts
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
@@ -241,6 +241,8 @@ class Posta():
         # initialize cleaner
         cleaner = Cleaner()
 
+        title_length = int(get_title_length(session))
+
         # switch to storing published posts in local sqllite database
         # fetch engine, create session
 
@@ -270,9 +272,19 @@ class Posta():
                     self.logger.debug("Cleaning content: %s", post['link_no'])
                     content = cleaner.clean_content(post['content'])
                     if content:
+
+                        #print(content)
+
+
                         self.update_gui(window, "{}: [{}-{}] Beginning processing post {} of {}. Post length {}. {} remaining".format(self.get_current_time(), threading.currentThread().getName(), workload['site'], count + 1, len(contents), post['content_length'], len(contents)-count-1))
                         self.logger.debug("Cleaning title: %s", post['link_no'])
-                        title = ' '.join(content.split()[0:25])
+                        title = ' '.join(content.split()[0:title_length])
+
+
+                        if window.abstract_checkbox.GetValue():
+                            content = cleaner.add_abstract(content)
+
+                        #self.logger.info(content)
                         #title = cleaner.clean_title(post['title'])
                         category = [post['category']]
                         """Add meta content"""
@@ -311,6 +323,11 @@ class Posta():
                             delay = random.randint(int(self.delay/2), int(self.delay))
                             self.logger.info("Script paused execution for {} secs".format(delay))
                             self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
+
+                            # update count in main window
+                            window.update_post_count = str(count_published_posts(session))
+                            window.updated_posts_label.SetLabel(f"{window.update_post_count} posts need to be updated")
+                            
                             time.sleep(delay)
                         else:
                             self.logger.debug("Failed to publish [%s] to [%s]", post['link_no'], workload['site'])
@@ -334,7 +351,7 @@ class Posta():
                         # update short content in database
 
                         try:
-                            save_short_posts(session(), post['link_no'])
+                            save_short_posts(Session(), post['link_no'], table)
                         except Exception as e:
                             msg = "{}: Short Post No: [{}] was not stored in the database - [Thread: {}]".format(self.get_current_time(), post['link_no'], threading.currentThread().getName())
                             self.update_gui(window, msg )
@@ -403,6 +420,8 @@ class Posta():
         msg = "{}:[{}] added to queue [{}]".format(self.get_current_time(), workload['site'], thread_name)
         self.update_window_reports(window, msg)
 
+        title_length = int(get_title_length(session))
+
 
         # update GUI grid
         #self.update data grid
@@ -425,14 +444,22 @@ class Posta():
 
                     self.logger.debug("Cleaning content: %s", post['link_no'])
                     content = cleaner.clean_content(post['content'])
+
                     if content:
+
                         self.update_gui(window, "{}: [{}-{}] Beginning processing post {} of {}. Post length {}. {} remaining".format(self.get_current_time(), threading.currentThread().getName(), workload['site'], count + 1, len(contents), post['content_length'], len(contents)-count-1))
                         self.logger.debug("Cleaning title: %s", post['link_no'])
-                        title = ' '.join(content.split()[0:25])
+
+                        title = ' '.join(content.split()[0:title_length])
                         #title = cleaner.clean_title(post['title'])
                         category = [post['category']]
                         """Add meta content"""
                         content = cleaner.add_meta_content(content, category)
+
+                        if window.abstract_checkbox.GetValue():
+                            content = cleaner.add_abstract(content)
+
+
                         # post
                         if site.publish_post(title, content, category, publishing_date):
                             
@@ -467,6 +494,9 @@ class Posta():
                             delay = random.randint(int(self.delay/2), int(self.delay))
                             self.logger.info("Script paused execution for {} secs".format(delay))
                             self.update_gui(window, "[{}] Script paused execution for {} secs".format(threading.currentThread().getName(), delay))
+                            # update count in main window
+                            window.update_post_count = str(count_published_posts(session))
+                            window.updated_posts_label.SetLabel(f"{window.update_post_count} posts need to be updated")
                             time.sleep(delay)
                         else:
                             self.logger.debug("Failed to publish [%s] to [%s]", post['link_no'], workload['site'])
@@ -482,7 +512,7 @@ class Posta():
 
                         short_content.append(post['link_no'])
                         try:
-                            save_short_posts(session(), post['link_no'])
+                            save_short_posts(Session(), post['link_no'])
                         except Exception as e:
                             msg = "{}: Short Post No: [{}] was not stored in the database - [Thread: {}]".format(self.get_current_time(), post['link_no'], threading.currentThread().getName())
                             self.update_gui(window, msg )
