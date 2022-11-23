@@ -28,11 +28,11 @@ class Cleaner(object):
             self.logger.warning("Stop words removed")
         return clean_string
     
-    def clean_content(self, dirty_string):
+    def clean_content(self, dirty_string, content_length):
         """Performs additional content formatting"""
         content_length = len(dirty_string.split())
         self.logger.debug("String length: %s", content_length)
-        if (content_length > 80):
+        if (content_length >= content_length):
             dirty_string = self.clean_string(dirty_string)
             return dirty_string
         else:

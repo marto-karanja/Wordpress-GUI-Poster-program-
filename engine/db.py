@@ -73,7 +73,7 @@ class Db(object):
     
     
     ####----------------------------------------------------
-    def fetch_posts_from_tables(self, no_of_posts = None, offset = None, tables = None):
+    def fetch_posts_from_tables(self, no_of_posts = None, offset = None, tables = None, content_length = None):
 
         #create cursor object
         cursor = self.conn.cursor(dictionary=True)
@@ -87,7 +87,7 @@ class Db(object):
         for table in tables:
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 ORDER BY RAND() limit %s offset {offset} ".format(ip = self.ip, offset = offset)
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > {content_length} ORDER BY RAND() limit %s offset {offset} ".format(ip = self.ip, offset = offset, content_length = content_length)
                 """select coursehero_content.link_no, coursehero_content.title, coursehero_content.content, content_length, category 
                 from coursehero_content
                 left JOIN published on coursehero_content.link_no = published.link_no
@@ -117,7 +117,7 @@ class Db(object):
 
 
     ####----------------------------------------------------
-    def fetch_category_posts_from_tables(self, no_of_posts = None, offset=None, table_names = None):
+    def fetch_category_posts_from_tables(self, no_of_posts = None, offset=None, table_names = None, content_length = None):
         self.logger.debug(table_names)
 
         #create cursor object
@@ -134,8 +134,8 @@ class Db(object):
         for table in table_names.keys():
             # fetch random
             if post_no != 0:
-                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > 75 and category in ('"+ "','".join(table_names[table]) + "') ORDER BY RAND() limit {limit} offset {offset}"
-                query = query.format(ip = self.ip, limit = post_no, offset = offset)
+                query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > {content_length} and category in ('"+ "','".join(table_names[table]) + "') ORDER BY RAND() limit {limit} offset {offset}"
+                query = query.format(ip = self.ip, limit = post_no, offset = offset, content_length = content_length)
 
                 self.logger.info(query)
 

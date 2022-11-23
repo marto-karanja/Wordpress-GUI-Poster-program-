@@ -43,4 +43,10 @@ class TitleLength(Base):
     __tablename__ = 'Title Length'
     id = Column(Integer, primary_key=True)
     title_length = Column(String, server_default='25')
+
+
+class ContentLength(Base):
+    __tablename__ = 'Content Length'
+    id = Column(Integer, primary_key=True)
+    content_length = Column(String, server_default='75')
     

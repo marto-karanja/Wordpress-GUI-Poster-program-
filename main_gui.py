@@ -20,7 +20,7 @@ from engine.reports_gui import ReportBotFrame
 from engine.category_post import CategoryPostFrame
 from engine.gui.banned_strings_gui import BannedStringsFrame
 from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
-from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts
+from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts, get_content_length, set_content_length
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
@@ -177,7 +177,8 @@ class PostaPanel(wx.Panel):
         btnData = [
             ("Load Websites", self.loadWebsites),
             ("Connect To Remote Database", self.connectRemoteDb),
-            ("Set Title Length", self.OnSetTitleLength)]
+            ("Set Title Length", self.OnSetTitleLength),
+            ("Set Content Length", self.OnSetContentLength)]
 
         self.grid_button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -356,6 +357,7 @@ class PostaPanel(wx.Panel):
         self.updated_posts_label.SetLabel(f"{self.update_post_count} posts need to be updated")
         self.log_message_to_txt_field("Finished updating database process")
         self.log_message_to_txt_field("**********************************")
+        self.log_message_to_txt_field("----------------------------------")
 
 
     def update_short_posts(self):
@@ -381,7 +383,8 @@ class PostaPanel(wx.Panel):
                     self.log_message_to_txt_field("Updating database....")
                     if db.update_multiple_short_posts(results[item]):
                         self.log_message_to_txt_field("Updated short Posts in online database: [{}]".format(len(results[item])))
-                        processed_posts.append(post[0])
+                        for post in results[item]:
+                                processed_posts.append(post[0])
 
                     else:
                         self.log_message_to_txt_field("Failed to Update Posts in online database: [{}]".format(len(results[item])))
@@ -547,6 +550,35 @@ class PostaPanel(wx.Panel):
         # close session
         session.close()
 
+    #-------------------------------------------------------------
+    def OnSetContentLength(self, evt):
+        # get title length
+        session = Session()
+        content_length = get_content_length(session)
+        
+            
+
+        message = "Set content length. Current length {}".format(content_length)
+        content_length = wx.GetTextFromUser(message, caption="Input text", default_value="", parent=None)
+
+        if content_length != "":
+            try:
+                content_length = int(content_length)
+
+            except:
+                wx.MessageBox("Input needs to be a number", "Success", wx.OK | wx.ICON_ERROR)
+
+            else:
+                try:
+                    set_content_length(session, content_length)
+                except Exception as e:
+                    self.logger.error("Unable to add string to database [%s]", content_length, exc_info=1)
+                else:
+                    wx.MessageBox("Successfully saved to database", "Success", wx.OK | wx.ICON_INFORMATION)
+                
+        # close session
+        session.close()
+
 
 #-------------------------------------------------------------------
     def beginRestPosting(self, evt):
@@ -577,6 +609,8 @@ class PostaPanel(wx.Panel):
         self.db.start_conn()
 
         offset = 0
+
+        content_length = int(get_content_length(Session()))
 
 
 
@@ -609,7 +643,7 @@ class PostaPanel(wx.Panel):
                     # abstract
                     # upload database count
 
-                    posts = self.db.fetch_posts_from_tables( no_of_posts = single_setting['posts'], offset= offset, tables = single_setting['table'] )
+                    posts = self.db.fetch_posts_from_tables( no_of_posts = single_setting['posts'], offset= offset, tables = single_setting['table'], content_length = content_length )
                     #update offset value 
                     offset = offset + int(single_setting['posts'])
 
@@ -734,6 +768,8 @@ class PostaPanel(wx.Panel):
 
         offset = 0
 
+        content_length = int(get_content_length(Session()))
+
         for site in self.data_table.data:
 
             single_setting = {}
@@ -747,7 +783,7 @@ class PostaPanel(wx.Panel):
             
             
 
-            posts = self.db.fetch_category_posts_from_tables( no_of_posts = single_setting['posts'], offset=offset, table_names = categories )
+            posts = self.db.fetch_category_posts_from_tables( no_of_posts = single_setting['posts'], offset=offset, table_names = categories, content_length = content_length )
 
             #update offset value 
             offset = offset + int(single_setting['posts'])
@@ -938,6 +974,9 @@ class PostaBotFrame(wx.Frame):
                     ("Manage Banned Strings", "Create/Delete Banned Strings", self.OnManageBanned),
                     ("&Quit", "Quit", self.OnCloseWindow))
                 ),
+                ("&Bulk Options",(
+                    ("Bulk Posting", "Post multiple posts at once", self.BulkPost),
+                )),
                 ("&Reports",(
                     ("View Posting Reports", "Show posts reports", self.OnPostReports),
                     ("View Crawling Reports", "Show crawling reports", self.OnCrawlReports),
@@ -977,6 +1016,11 @@ class PostaBotFrame(wx.Frame):
         self.Destroy()
 
     def OnAbout(self, event):
+        dlg = PostaAbout(self)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def BulkPost(self, event):
         dlg = PostaAbout(self)
         dlg.ShowModal()
         dlg.Destroy()

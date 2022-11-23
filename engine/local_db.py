@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete
-from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process, TitleLength
+from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process, TitleLength, ContentLength
 
 def get_connection(database_url):
     return create_engine(database_url, echo=False, connect_args={'check_same_thread': False})
@@ -192,6 +192,26 @@ def set_title_length(db_session, length):
     title_length = db_session.query(TitleLength).get(1)
     title_length.title_length = length
     db_session.add(title_length)
+    try:
+        db_session.commit()
+    except Exception as e:
+        raise
+    else:
+        return
+
+
+def get_content_length(db_session):
+    content_length = db_session.query(ContentLength).get(1)
+    if content_length is None:
+        content_length = ContentLength(content_length=75)
+        db_session.add(content_length)
+        db_session.commit()
+    return content_length.content_length
+
+def set_content_length(db_session, length):
+    content_length = db_session.query(ContentLength).get(1)
+    content_length.content_length = length
+    db_session.add(content_length)
     try:
         db_session.commit()
     except Exception as e:

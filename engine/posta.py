@@ -10,7 +10,7 @@ from engine.cleaner import Cleaner
 from engine.db import Db
 from engine.post import WpPost
 from engine.rest_post import RestPost
-from engine.local_db import connect_to_db, create_session, remove_session, save_published_posts, save_short_posts, get_title_length, count_published_posts
+from engine.local_db import connect_to_db, create_session, remove_session, save_published_posts, save_short_posts, get_title_length, count_published_posts, get_content_length
 from engine.models import PublishedPosts
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
@@ -242,6 +242,7 @@ class Posta():
         cleaner = Cleaner()
 
         title_length = int(get_title_length(session))
+        content_length = int(get_content_length(session))
 
         # switch to storing published posts in local sqllite database
         # fetch engine, create session
@@ -270,7 +271,7 @@ class Posta():
                     #current_time = self.get_current_time()
 
                     self.logger.debug("Cleaning content: %s", post['link_no'])
-                    content = cleaner.clean_content(post['content'])
+                    content = cleaner.clean_content(post['content'], content_length)
                     if content:
 
                         #print(content)
@@ -421,6 +422,7 @@ class Posta():
         self.update_window_reports(window, msg)
 
         title_length = int(get_title_length(session))
+        content_length = int(get_content_length(session))
 
 
         # update GUI grid
@@ -443,7 +445,7 @@ class Posta():
                     #current_time = self.get_current_time()
 
                     self.logger.debug("Cleaning content: %s", post['link_no'])
-                    content = cleaner.clean_content(post['content'])
+                    content = cleaner.clean_content(post['content'], content_length)
 
                     if content:
 
