@@ -4,7 +4,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete
-from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process, TitleLength, ContentLength
+from sqlalchemy.sql.expression import func, select
+from sqlalchemy import exc
+from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process, TitleLength, ContentLength, WebsiteSettings, References
 
 def get_connection(database_url):
     return create_engine(database_url, echo=False, connect_args={'check_same_thread': False})
@@ -218,3 +220,109 @@ def set_content_length(db_session, length):
         raise
     else:
         return
+
+
+def save_website_records(engine, website_details):
+
+    with create_threaded_session(engine) as session:
+        website_record = WebsiteSettings(
+            website_name = website_details['website_name'],
+            ssh_host = website_details['ssh_host'],
+            cpanel_username = website_details['cpanel_username'],
+            ssh_password = website_details['ssh_password'],
+            database_username = website_details['database_username'],
+            database_password = website_details['database_password'],
+            database_name = website_details['database_name'],
+            table_prefix = website_details['database_prefix'],
+            security_filepath = website_details["security_filepath"],        
+        )
+        
+        session.add(website_record)
+        try:
+            session.commit()
+        except Exception as e:
+            raise
+        else:
+            print("Records saved successfully")
+            return True
+
+
+def get_website_records(engine):
+    with create_threaded_session(engine) as session:
+        records = session.query(WebsiteSettings).all()
+        return {k.website_name : k.website_name for k in records}
+
+def fetch_connection_details(engine, website):
+    with create_threaded_session(engine) as session:
+        records = session.query(WebsiteSettings).filter(WebsiteSettings.website_name == website).one()
+        print(records)
+        return records
+
+def remove_website_records(engine, websites):
+    with create_threaded_session(engine) as session:
+        banned_string = delete(WebsiteSettings).where(WebsiteSettings.website_name.in_(websites))
+
+
+        try:
+            session.execute(banned_string)
+            session.commit()
+        except Exception as e:
+            raise
+        else:
+            return True
+
+
+    #----SQL Database Clean Up codes
+TABLE_PARAMETER = "{TABLE_PARAMETER}"
+DROP_TABLE_SQL = f"DROP TABLE '{TABLE_PARAMETER}';"
+GET_TABLES_SQL = "SELECT name FROM sqlite_schema WHERE type='table';"
+
+
+def delete_all_tables(con):
+    tables = get_tables(con)
+    delete_tables(con, tables)
+
+
+def get_tables(con):
+    cur = con.cursor()
+    cur.execute(GET_TABLES_SQL)
+    tables = cur.fetchall()
+    cur.close()
+    return tables
+
+
+def delete_tables(con, tables):
+    cur = con.cursor()
+    for table, in tables:
+        sql = DROP_TABLE_SQL.replace(TABLE_PARAMETER, table)
+        cur.execute(sql)
+    cur.close()
+
+
+
+def save_references_to_db(engine, references):
+    with create_threaded_session(engine) as db_session:
+        if isinstance(references, list):
+            references_list = []
+            for l in references:            
+                references_list.append(References(reference_name = l))
+            db_session.add_all(references_list)
+        else:
+            db_session.add(References(reference_name = references))
+
+        try:
+            db_session.commit()
+        except exc.IntegrityError as e:
+            return False
+        else:
+            return True
+
+def fetch_references(engine, limit):
+    
+    with create_threaded_session(engine) as db_session:
+        references = db_session.query(References.reference_name).order_by(func.random()).limit(limit).all()
+
+        for reference in references:
+            print(reference)
+
+        return references

@@ -19,8 +19,9 @@ from engine.posta import Posta
 from engine.reports_gui import ReportBotFrame
 from engine.category_post import CategoryPostFrame
 from engine.gui.banned_strings_gui import BannedStringsFrame
+from engine.gui.bulk_settings_gui import BulkPostsFrame
 from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
-from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts, get_content_length, set_content_length
+from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts, get_content_length, set_content_length, delete_all_tables, save_references_to_db
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
@@ -40,7 +41,7 @@ Session = scoped_session(session_factory)
 
 class PostaPanel(wx.Panel):
     #----------------------------------------------------------------------
-    def __init__(self, parent, tables_summary,db, logger = None):
+    def __init__(self, parent, tables_summary= None,db = None, logger = None):
         wx.Panel.__init__(self, parent)
         self.tables_summary= tables_summary
         self.wildcard = "Setting files (*.csv)|*.csv|All files (*.*)|*.*"
@@ -951,16 +952,16 @@ class PostaBotFrame(wx.Frame):
         database_url = "{}\{}".format(os.getcwd(), "settings.db")
         try:        
             # GET THE CONNECTION OBJECT (ENGINE) FOR THE DATABASE
-            engine = get_connection(f"sqlite:///{database_url}")
+            self.engine = get_connection(f"sqlite:///{database_url}")
         except Exception as ex:
             print("Connection could not be made due to the following error: \n", ex)
         else:
             print("Connection created successfully.")
-        Base.metadata.create_all(engine)
+        Base.metadata.create_all(self.engine)
 
 
     def createPanel(self, table):
-        self.mainPanel = PostaPanel(self, table, self.db, self.logger)
+        self.mainPanel = PostaPanel(self, tables_summary =table, db = self.db, logger = self.logger)
         self.box_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.box_sizer.Add(self.mainPanel, 1, wx.EXPAND)
         self.box_sizer.SetSizeHints(self)
@@ -972,10 +973,13 @@ class PostaBotFrame(wx.Frame):
 
                     ("About...", "Show about window", self.OnAbout),
                     ("Manage Banned Strings", "Create/Delete Banned Strings", self.OnManageBanned),
+                    ("Upload References", "Add References", self.UploadReferences),                    
                     ("&Quit", "Quit", self.OnCloseWindow))
                 ),
                 ("&Bulk Options",(
-                    ("Bulk Posting", "Post multiple posts at once", self.BulkPost),
+                    ("Publish in Bulk", "Post multiple posts at once", self.BulkPost),
+                    ("Export Settings", "Export Database", self.OnExport),
+                    ("Import Settings", "Import Database", self.OnImport),
                 )),
                 ("&Reports",(
                     ("View Posting Reports", "Show posts reports", self.OnPostReports),
@@ -1021,9 +1025,10 @@ class PostaBotFrame(wx.Frame):
         dlg.Destroy()
 
     def BulkPost(self, event):
-        dlg = PostaAbout(self)
-        dlg.ShowModal()
-        dlg.Destroy()
+        frame = BulkPostsFrame(parent=wx.GetTopLevelParent(self), title = "Publish posts in Bulk", logger = self.logger, db = self.db)
+        frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE)
+        frame.Show(True)
+        #self.Hide()
 
     
     #-----------------------------------------------------------------------
@@ -1083,7 +1088,7 @@ class PostaBotFrame(wx.Frame):
 
     def export_database(self):
         import sqlite3
-        con = sqlite3.connect('bot.db')
+        con = sqlite3.connect('settings.db')
         with open(self.filename, 'w', encoding="utf-8") as f:
             for line in con.iterdump():
                 f.write('%s\n' % line)
@@ -1099,6 +1104,43 @@ class PostaBotFrame(wx.Frame):
             self.filename = dlg.GetPath()
             self.import_database()
             dlg.Destroy()
+
+    def import_database(self):
+        retCode = wx.MessageBox("Are you sure? This action is irreversible and will erase your current settings", caption="Confirm Import", style=wx.YES_NO | wx.ICON_INFORMATION)
+        if (retCode == wx.YES):
+            import sqlite3
+            
+            con = sqlite3.connect('settings.db')
+            delete_all_tables(con)
+            # delete all tables in the db
+            f = open(self.filename,'r', encoding="utf-8")
+            str = f.read()
+            con.executescript(str)
+            wx.MessageBox("The import has been completed successfully.",caption="Successful import", style=wx.OK| wx.ICON_INFORMATION)
+            
+            return
+
+    
+    def UploadReferences(self, event):
+        wildcard = "Database files (*.csv)|*.csv|All files (*.*)|*.*"
+        dlg = wx.FileDialog(self, "Upload References", os.getcwd(), style=wx.FD_OPEN, wildcard=wildcard)
+        
+        if dlg.ShowModal() == wx.ID_OK:
+            self.references_filename = dlg.GetPath()
+            self.import_references()
+            dlg.Destroy()
+
+    def import_references(self):
+        with open(self.references_filename, 'r') as file:
+            csvreader = csv.reader(file)
+            references = []
+            for row in csvreader:
+                print(row[0])
+                references.append(row[0])
+        if save_references_to_db(self.engine, references):
+            wx.MessageBox("References saved successfully", "Success", wx.ICON_INFORMATION)
+        else:
+            wx.MessageBox("Saving operation failed", "ERROR", wx.ICON_ERROR)
 
 
     

@@ -563,3 +563,10 @@ class Posta():
 
     def update_window_reports(self, window, msg):
         wx.CallAfter(window.log_message_to_report_txt_field,msg )
+
+
+    def bulk_posts(self, connection,Session, publishing_date, delay, posts, settings, thread_queue, event, window, categories):
+        results = {}
+        results['Thead start time'] = self.get_current_time()
+        thread_name = threading.currentThread().getName()
+        pass

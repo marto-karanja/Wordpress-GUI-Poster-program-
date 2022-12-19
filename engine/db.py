@@ -88,10 +88,9 @@ class Db(object):
             # fetch random
             if post_no != 0:
                 query = "select link_no, title, content, content_length, category from " + table + " where `{ip}` = 'False' and content_length > {content_length} ORDER BY RAND() limit %s offset {offset} ".format(ip = self.ip, offset = offset, content_length = content_length)
-                """select coursehero_content.link_no, coursehero_content.title, coursehero_content.content, content_length, category 
-                from coursehero_content
-                left JOIN published on coursehero_content.link_no = published.link_no
-                where content_length > 75 and published.link_no is null  ORDER BY RAND() limit 1000"""
+
+                self.logger.info(f"[{query}]")
+
 
 
                 self.logger.info((query + ' '+str(post_no)) )
@@ -113,6 +112,40 @@ class Db(object):
 
         cursor.close()
         return table_results
+
+
+    ####----------------------------------------------------
+    def fetch_posts_from_table(self, no_of_posts = None, offset = None,  table_name = None, content_length = None):
+
+        #create cursor object
+        cursor = self.conn.cursor(dictionary=True)
+
+       
+        no_of_posts = int(no_of_posts)
+
+        query = "select link_no, title, content, content_length, category from " + table_name + " where `{ip}` = 'False' and content_length > {content_length} ORDER BY RAND() limit %s offset {offset} ".format(ip = self.ip, offset = offset, content_length = content_length)
+
+        self.logger.info(f"[{query}]")
+        
+        self.logger.info((query + ' '+str(no_of_posts)) )
+
+        try:
+            cursor.execute(query, (no_of_posts,))
+            results = cursor.fetchall()
+            fetched_posts = cursor.rowcount
+
+        except Exception:
+            self.logger.debug("[ERROR STRING]:%s", cursor._last_executed)
+            fetched_posts = 0
+
+        self.logger.debug("%s fetched from table %s", fetched_posts, table_name)
+            
+
+
+
+        cursor.close()
+
+        return results
 
 
 
@@ -304,11 +337,13 @@ class Db(object):
             
             summary = "{} - {} posts".format(table[0], result[0]['Available Posts'])
             results [summary]=  table[0]
+
         cursor.close()
-
-
-
         return results
+
+
+
+        
 
 
     #########----------------------------
@@ -389,6 +424,98 @@ class Db(object):
             self.logger.debug("Processing query")
         except:
             self.logger.error("Unable to fetch database tables")
+        return results
+
+    #------------------------------------------------------------
+
+    def fetch_total_tables_summary(self):
+        query = "SHOW TABLES LIKE '%_content'"
+        cursor = self.conn.cursor()
+        # run the query
+
+        try:
+            cursor.execute(query)
+            tables = cursor.fetchall()
+            self.logger.debug("Fetching database tables")
+        except:
+            self.logger.error("Unable to fetch database tabkles")
+        cursor.close()
+        results = {}
+
+        cursor = self.conn.cursor(dictionary=True)
+        for table in tables:
+            query = "SELECT count(*) as 'Available Posts' FROM {table}".format(table = table[0])
+            
+            cursor.execute(query)
+            result = cursor.fetchall()
+            
+            summary = "{} - {} posts".format(table[0], result[0]['Available Posts'])
+            results [summary]=  table[0]
+
+        cursor.close()
+        return results
+
+    ####----------------------------------------------------
+    def fetch_all_posts_from_table(self, no_of_posts = None, offset = None,  table_name = None, content_length = None):
+
+        #create cursor object
+        cursor = self.conn.cursor(dictionary=True)
+
+       
+        no_of_posts = int(no_of_posts)
+
+        query = "select link_no, title, content, content_length, category from " + table_name + " where LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) > {content_length} ORDER BY date_recorded asc limit %s offset {offset} ".format( offset = offset, content_length = content_length)
+
+        self.logger.info(f"[{query}]")
+        
+        self.logger.info((query + ' '+str(no_of_posts)) )
+
+        try:
+            cursor.execute(query, (no_of_posts,))
+            results = cursor.fetchall()
+            fetched_posts = cursor.rowcount
+
+        except Exception:
+            self.logger.debug("[ERROR STRING]:%s", cursor._last_executed)
+            fetched_posts = 0
+
+        self.logger.debug("%s fetched from table %s", fetched_posts, table_name)
+            
+
+
+
+        cursor.close()
+
+        return results
+
+        ####----------------------------------------------------
+    def fetch_available_posts(self, table_name = None, content_length = None):
+        cursor = self.conn.cursor(dictionary=True)
+
+       
+
+        query = "select count(*) as count from " + table_name + " where LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) > {content_length} ".format(  content_length = content_length)
+
+        self.logger.info(f"[{query}]")
+
+
+        try:
+            cursor.execute(query)
+            results = cursor.fetchall()
+            fetched_posts = cursor.rowcount
+
+        except Exception:
+            self.logger.debug("[ERROR STRING]:%s", cursor._last_executed)
+            fetched_posts = 0
+
+        self.logger.debug("%s fetched from table %s", fetched_posts, table_name)
+            
+
+
+
+        cursor.close()
+        print(results)
+
         return results
 
 

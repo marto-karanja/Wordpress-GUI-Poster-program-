@@ -50,3 +50,20 @@ class ContentLength(Base):
     id = Column(Integer, primary_key=True)
     content_length = Column(String, server_default='75')
     
+class WebsiteSettings(Base):
+    __tablename__ = 'Website Settings'
+    id = Column(Integer, primary_key=True)
+    website_name = Column(String, unique=True)
+    ssh_host = Column(String)
+    cpanel_username = Column(String)
+    ssh_password = Column(String)
+    database_username = Column(String)
+    database_password = Column(String)
+    database_name = Column(String)
+    table_prefix = Column(String)
+    security_filepath = Column(String)
+
+class References(Base):
+    __tablename__ = 'References'
+    id = Column(Integer, primary_key=True)
+    reference_name = Column(String, unique=True)

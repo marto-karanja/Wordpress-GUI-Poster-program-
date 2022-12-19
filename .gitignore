@@ -14,5 +14,6 @@ __pycache__/
 /dist
 /twit/config.py
 config.json
-/key
-*/key
+/keys
+/engine/key
+*/keys
