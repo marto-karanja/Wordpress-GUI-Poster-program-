@@ -155,9 +155,8 @@ class Db(object):
                     self.logger.info("[%s] posts inserted in db", x)
                     window.update_gui(f"[{x}] posts inserted in database")
                     # update post category
-                    guids = [record[-2] for record in records_to_update]
-                    self.update_post_category(guids, cursor = cursor, window= window)
-                    self
+                    #guids = [record[-2] for record in records_to_update]
+                    #self.update_post_category(guids, cursor = cursor, window= window)
                     return True
                 finally:
                     cursor.close()

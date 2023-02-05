@@ -150,7 +150,8 @@ class BulkPublishingPanel(wx.Panel):
         self.title_postfix_value = wx.TextCtrl(self, -1, "")
 
         randomize_title_lbl = wx.StaticText(self, -1, "Choose Title From body content:")
-        self.choicesList = {'1st Sentence':1, '2nd Sentence':2, '3rd Sentence':3, '4th Sentence':4, '5th sentence':5, '6th Sentence':6,'7th Sentence':7, '8th Sentence':8, '9th Sentence':9, '10th Sentence':10, '1st Quarter':0.25, '2nd Quarter':0.5, '3rd Quarter':0.75, '4th Quarter':0, 'Randomize':-1}
+        #self.choicesList = {'1st Sentence':1, '2nd Sentence':2, '3rd Sentence':3, '4th Sentence':4, '5th sentence':5, '6th Sentence':6,'7th Sentence':7, '8th Sentence':8, '9th Sentence':9, '10th Sentence':10, '1st Quarter':0.25, '2nd Quarter':0.5, '3rd Quarter':0.75, '4th Quarter':0, 'Randomize':-1}
+        self.choicesList = {'1st Sentence':1, '2nd Sentence':2, '3rd Sentence':3, '4th Sentence':4, '5th sentence':5, '6th Sentence':6,'7th Sentence':7, '8th Sentence':8, '9th Sentence':9, '10th Sentence':10, '1st Quarter':0.25, '2nd Quarter':0.5, '3rd Quarter':0.75, '4th Quarter':0}
         self.randomize_title_value = wx.Choice(self, -1, choices=list(self.choicesList.keys()))
         self.randomize_title_value.SetSelection(1)
 
@@ -286,8 +287,10 @@ class BulkPublishingPanel(wx.Panel):
                 table_name = self.tables_summary[tables_choosen[0]]
 
                 batch_size = int(self.offset_combo_box.GetValue())
+                
 
                 content_length = int(self.content_length_combo_box.GetValue())
+                self.body_length_value.SetValue(str(content_length))
 
 
                 available_posts = self.db.fetch_available_posts(table_name, content_length)
@@ -491,6 +494,8 @@ class BulkPublishingPanel(wx.Panel):
         offset = int(self.database_choosen[table_name][offset_choosen[0]]) * batch_size
 
         for website in self.website_records:
+
+            self.display_user_settings(settings) 
             
             self.update_gui(f"Publishing to [{website}]")
 
@@ -554,9 +559,30 @@ class BulkPublishingPanel(wx.Panel):
     def update_gui(self, msg):
         wx.CallAfter(self.parent.window.log_message_to_txt_field,msg)
 
+    def display_user_settings(self, settings):
+
+        self.update_gui(f"****User settings****")
+
+        self.update_gui(f"Start Date: [{self.start_date}]")
+        self.update_gui(f"End Date: [{self.end_date}]")
+
+        self.update_gui(f"No.of questions: [{settings['questions'] }]")
+        self.update_gui(f"Include prefix to url: [{'Yes' if settings['random_prefix'] else 'No'}]")
+        self.update_gui(f"Include excerpt [{'Yes' if settings['include_excerpt'] else 'No'}]")
+        self.update_gui(f"Include abstract: [{'Yes' if settings['abstract_value'] else 'No'}]")
+        self.update_gui(f"Include category: [{'Yes' if settings['include_category'] else 'No'}]")
+        self.update_gui(f"Include references: [{'Yes' if settings['include_references'] else 'No'}]")
+        self.update_gui(f"Title postfix set:[{'Yes' if settings['title_postfix'] else 'No'}]")
+        self.update_gui(f"Title prefix set: [{'Yes' if settings['title_prefix'] else 'No'}]")
+        self.update_gui(f"Random string selection [{settings['randomize_title']}]")
+        self.update_gui(f"Title length: [{settings['title_length']}]")
+        self.update_gui(f"Body length: [{settings['body_length']}]")
+        self.update_gui(f"****User settings****")
+
 
     def post_questions(self, settings, tables_choosen):
-        
+
+        self.display_user_settings(settings)       
 
         for website in self.website_records:
             
@@ -592,8 +618,13 @@ class BulkPublishingPanel(wx.Panel):
                         limit = questions_remaining
 
                     table_name = self.tables_summary[table]
+
+                    if settings['body_length'] == '':
+                        body_length = 35
+                    else:
+                        body_length = settings['body_length']
                         
-                    posts = self.db.fetch_all_posts_from_table( no_of_posts = limit, offset= offset, table_name = table_name, content_length = settings['body_length'])
+                    posts = self.db.fetch_all_posts_from_table( no_of_posts = limit, offset= offset, table_name = table_name, content_length = body_length)
 
                     offset = offset + limit
 
@@ -672,7 +703,7 @@ class BulkPublishingPanel(wx.Panel):
             if content:
                 self.logger.debug("Cleaning title: %s", post['link_no'])
                 
-                title = cleaner.generate_title(content, settings['title_length'], randomize_title = settings['randomize_title'])
+                title = cleaner.generate_title(content, settings['title_length'], randomize_title = self.choicesList[settings['randomize_title']])
                 
                 if settings['include_excerpt']:
                     content = cleaner.add_abstract(content, settings['abstract_value'])
@@ -698,8 +729,8 @@ class BulkPublishingPanel(wx.Panel):
                 
                                
                 
-                self.logger.info(f"Final clean Title: [{title}] ")
-                self.logger.info(f"Final clean Content: [{content}] ")
+                #self.logger.info(f"Final clean Title: [{title}] ")
+                #self.logger.info(f"Final clean Content: [{content}] ")
                 self.update_gui(f"Final clean Title: [{title}] ")
 
                 post_name_title = cleaner.clean_title(title)

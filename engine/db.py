@@ -464,7 +464,7 @@ class Db(object):
        
         no_of_posts = int(no_of_posts)
 
-        query = "select link_no, title, content, content_length, category from " + table_name + " where LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) > {content_length} ORDER BY date_recorded asc limit %s offset {offset} ".format( offset = offset, content_length = content_length)
+        query = "select link_no, title, content, content_length, category from " + table_name + " where LENGTH(trim(rtrim(content))) - LENGTH(trim(rtrim(REPLACE(content, ' ', '')))) > {content_length} ORDER BY date_recorded asc limit %s offset {offset} ".format( offset = offset, content_length = content_length)
 
         self.logger.info(f"[{query}]")
         
@@ -494,7 +494,7 @@ class Db(object):
 
        
 
-        query = "select count(*) as count from " + table_name + " where LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) > {content_length} ".format(  content_length = content_length)
+        query = "select count(*) as count from " + table_name + " where LENGTH(trim(rtrim(content))) - LENGTH(trim(rtrim(REPLACE(content, ' ', '')))) > {content_length} ".format(  content_length = content_length)
 
         self.logger.info(f"[{query}]")
 

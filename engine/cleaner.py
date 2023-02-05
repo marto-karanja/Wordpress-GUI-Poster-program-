@@ -70,25 +70,29 @@ class Cleaner(object):
         print(content_length)
 
         min = content_length - set_length
+        if min > 0:
 
-        start_length = random.randint(0, min)
-        end_length = start_length+set_length
+            start_length = random.randint(0, min)
+            end_length = start_length+set_length
 
 
-        if content_length > set_length:
-            excerpt = ' '.join(content.split()[start_length: end_length])
+            if content_length > set_length:
+                excerpt = ' '.join(content.split()[start_length: end_length])
+            else:
+                return content
+            meta_content="<table><tr><th>Abstract</th></tr><tr><td><i>{excerpt}</i></td></tr></table><p>{content}</p>"
+            clean_string = meta_content.format(excerpt = excerpt, content = content)
+            return clean_string
         else:
             return content
-        meta_content="<table><tr><th>Abstract</th></tr><tr><td><i>{excerpt}</i></td></tr></table><p>{content}</p>"
-        clean_string = meta_content.format(excerpt = excerpt, content = content)
-        return clean_string
 
 
     def generate_title(self, content, title_length, randomize_title):
 
         content_count = content.split()
         content_count_length = len(content_count)
-        title = ' '.join(content_count[0:title_length])
+        #title = ' '.join(content_count[0:title_length])
+        #self.logger.info(randomize_title)
 
         if randomize_title == 0:
 
@@ -112,84 +116,88 @@ class Cleaner(object):
             title = ' '.join(content_count[start: fin][0:title_length])
 
         if randomize_title == 1:
-            if content_count > (title_length):
+            if content_count_length > (title_length):
                 title = ' '.join(content.split()[title_length:(title_length)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
         
         if randomize_title == 2:
-            if content_count > (title_length * 2):
+            if content_count_length > (title_length * 2):
                 title = ' '.join(content.split()[title_length:(title_length*2)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
 
         if randomize_title == 3:
-            if content_count > (title_length * 3):
+            if content_count_length > (title_length * 3):
                 title = ' '.join(content.split()[(title_length * 2):(title_length*3)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
                 
         if randomize_title == 4:
-            if content_count > (title_length * 4):
+            if content_count_length > (title_length * 4):
                 title = ' '.join(content.split()[(title_length * 3):(title_length*4)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
 
         if randomize_title == 5:
-            if content_count > (title_length * 4):
+            if content_count_length > (title_length * 4):
                 title = ' '.join(content.split()[(title_length * 4):(title_length*5)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
 
         if randomize_title == 6:
-            if content_count > (title_length * 6):
+            if content_count_length > (title_length * 6):
                 title = ' '.join(content.split()[(title_length * 5):(title_length*6)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
         
         if randomize_title == 7:
-            if content_count > (title_length * 7):
+            if content_count_length > (title_length * 7):
                 title = ' '.join(content.split()[(title_length * 6):(title_length*7)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
         
         if randomize_title == 8:
-            if content_count > (title_length * 8):
+            if content_count_length > (title_length * 8):
                 title = ' '.join(content.split()[(title_length * 7):(title_length*8)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
         
         if randomize_title == 9:
-            if content_count > (title_length * 9):
+            if content_count_length > (title_length * 9):
                 title = ' '.join(content.split()[(title_length * 8):(title_length*9)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
         
         if randomize_title == 10:
-            if content_count > (title_length * 10):
+            if content_count_length > (title_length * 10):
                 title = ' '.join(content.split()[(title_length * 9):(title_length*10)])
             else:
                 title = ' '.join(content.split()[0:-title_length])
                 
         if randomize_title == -1:
-            import random
-            start = random.uniform(0, content_count_length)
-            if (start+title_length) > (content_count_length / 2):
-                title = ' '.join(content.split()[-start:title_length])
+            
+            start = int(random.uniform(0, content_count_length))
+
+            self.logger.info(f"Start Position {start} Title Length {title_length} Content count {content_count_length}")
+            if (start + title_length) > (content_count_length / 2):
+                title = ' '.join(content.split()[-(content_count_length - start + 1) :-title_length])
             else:
                 title = ' '.join(content.split()[start:title_length])
+        self.logger.info(f"Title choosen: {title}")
         return title
 
     def add_references_content(self, content):
         content_length = len(content.split())
+        limit = 1
         if content_length < 30:
             limit = 1
         if content_length >30 and content_length < 60:
+            limit = 1
+        if content_length >60 and content_length < 150:
             limit = 2
-        if content_length >60 and content_length < 100:
+        if content_length >150:
             limit = 3
-        if content_length >100:
-            limit = 4
 
         references = fetch_references(self.engine, limit)
 
