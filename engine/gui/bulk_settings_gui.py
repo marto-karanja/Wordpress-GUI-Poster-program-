@@ -13,12 +13,13 @@ from datetime import datetime
 from queue import Queue
 from datetime import date
 from sys import maxsize
+from engine.db import Db
 from engine.local_db import connect_to_db, create_session, get_banned_strings, add_banned_string, delete_banned_string, save_website_records, get_website_records, remove_website_records
 from engine.gui.bulk_publishing import BulkPublishingFrame
 
 class BulkPostsFrame(wx.Frame):
     """Whatsapp GUI Frame"""
-    def __init__(self, parent, title = None, logger = None, tables_summary = None, db = None):
+    def __init__(self, parent, title = None, logger = None, tables_summary = None):
         self.title = title or "Banned Strings"
         wx.Frame.__init__(self, parent, -1, self.title)
         self.parent  = parent
@@ -27,16 +28,18 @@ class BulkPostsFrame(wx.Frame):
 
         website_records = self.fetch_website_records()
 
+
+
         
 
         self.filename = ""
 
-        self.createPanel(website_records, db)
+        self.createPanel(website_records)
 
 
         #--------------------------------
-    def createPanel(self, stop_words, db):
-        self.mainPanel = BulkPostsPanel(self, self.logger, stop_words, parent_frame = self.parent, db = db)
+    def createPanel(self, stop_words):
+        self.mainPanel = BulkPostsPanel(self, self.logger, stop_words, parent_frame = self.parent)
         self.box_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.box_sizer.Add(self.mainPanel, 1, wx.EXPAND)
         self.box_sizer.SetSizeHints(self)
@@ -68,7 +71,7 @@ class BulkPostsFrame(wx.Frame):
 
     
 class BulkPostsPanel(wx.Panel):
-    def __init__(self, parent, logger = None, website_records = None, parent_frame = None, db = None):
+    def __init__(self, parent, logger = None, website_records = None, parent_frame = None):
         wx.Panel.__init__(self, parent)
         self.logger = logger or logging.getLogger(__name__)  
         self.parent = parent
@@ -77,7 +80,7 @@ class BulkPostsPanel(wx.Panel):
 
         self.logger.info(f"Setting up bulk posts Settings and websites")
 
-        self.db = db
+        
 
         self.filename = ""
 
@@ -253,7 +256,7 @@ class BulkPostsPanel(wx.Panel):
     def beginPublishing(self, evt):
         website_records = self.website_records_combos.GetCheckedStrings()
         if len(website_records) > 0:
-            frame = BulkPublishingFrame(parent=wx.GetTopLevelParent(self), panel = self, title = "Bulk Publish Posts", logger = self.logger, website_records = website_records, db = self.db)
+            frame = BulkPublishingFrame(parent=wx.GetTopLevelParent(self), panel = self, title = "Bulk Publish Posts", logger = self.logger, website_records = website_records)
             frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE)
             frame.Show(True)
         else:

@@ -17,3 +17,4 @@ config.json
 /keys/*
 /engine/key
 */keys
+*.db

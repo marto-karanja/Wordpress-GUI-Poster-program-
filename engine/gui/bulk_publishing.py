@@ -16,6 +16,7 @@ from engine.cleaner import Cleaner
 from queue import Queue
 from datetime import date
 from sys import maxsize
+from engine.db_remote_ssh import Db as questions_db
 
 from engine.local_db import connect_to_db, create_session, get_banned_strings, add_banned_string, delete_banned_string, save_website_records, get_website_records, fetch_connection_details
 
@@ -34,6 +35,9 @@ class BulkPublishingFrame(wx.Frame):
         self.logger = logger or logging.getLogger(__name__)
 
         self.filename = ""
+
+        db = questions_db(self.logger)
+        db.start_conn()
 
         tables_summary = db.fetch_total_tables_summary()
 

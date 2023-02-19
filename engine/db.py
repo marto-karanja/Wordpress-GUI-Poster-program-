@@ -147,8 +147,6 @@ class Db(object):
 
         return results
 
-
-
     ####----------------------------------------------------
     def fetch_category_posts_from_tables(self, no_of_posts = None, offset=None, table_names = None, content_length = None):
         self.logger.debug(table_names)
@@ -189,10 +187,7 @@ class Db(object):
 
         cursor.close()
         return table_results
-        
-
-
-    
+            
     ####----------------------------------------------------
     def update_posts(self, post):
         """update fetched posts"""
@@ -340,11 +335,6 @@ class Db(object):
 
         cursor.close()
         return results
-
-
-
-        
-
 
     #########----------------------------
     def fetch_tables(self):
