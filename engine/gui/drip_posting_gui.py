@@ -19,7 +19,7 @@ from engine.posta import Posta
 from engine.reports_gui import ReportBotFrame
 from engine.category_post import CategoryPostFrame
 from engine.gui.banned_strings_gui import BannedStringsFrame
-from engine.gui.bulk_settings_gui import BulkPostsFrame
+#from engine.gui.bulk_settings_gui import BulkPostsFrame
 from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
 from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts, get_content_length, set_content_length, delete_all_tables, save_references_to_db
 
@@ -979,7 +979,6 @@ class PostaBotFrame(wx.Frame):
                     ("&Quit", "Quit", self.OnCloseWindow))
                 ),
                 ("&Bulk Options",(
-                    ("Publish in Bulk", "Post multiple posts at once", self.BulkPost),
                     ("Export Settings", "Export Database", self.OnExport),
                     ("Import Settings", "Import Database", self.OnImport),
                 )),

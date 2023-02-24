@@ -1,4 +1,5 @@
 # Db Access Class
+import wx
 from mysql.connector.locales.eng import client_error
 import mysql.connector
 import logging
@@ -6,7 +7,99 @@ import socket
 import sshtunnel
 import paramiko
 import os
+import threading
+import wx
 #import random
+
+
+
+
+from functools import wraps
+
+logger = logging.getLogger(__name__)
+
+def db_connection(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # Open MySQL connection
+        sshtunnel.DEFAULT_LOGLEVEL = logging.DEBUG
+
+        ssh_password = "incorrect0727531915"
+
+
+        security_key = paramiko.RSAKey.from_private_key_file((os.getcwd() +"\\keys\\database_key"),ssh_password) 
+        #security_key = paramiko.RSAKey.from_private_key_file(self.connection_details.security_filepath, self.connection_details.ssh_password)
+
+        sshtunnel.SSH_TIMEOUT = 6000.0
+        sshtunnel.TUNNEL_TIMEOUT = 12000.0
+
+        tunnel = sshtunnel.SSHTunnelForwarder(
+                ('198.54.115.176', 21098),
+                ssh_private_key=security_key,
+                ssh_username = 'examwfgd',
+                set_keepalive = 12000,
+                remote_bind_address = ('127.0.0.1', 3306)
+            )
+            
+        try:
+            tunnel.start()
+        except Exception as e:
+            logger.error(f"A connection error has occured", str(e))
+            frame = wx.Frame(None)
+            wx.MessageBox("Error connecting to websites database", "Error!", wx.OK|wx.ICON_INFORMATION|wx.STAY_ON_TOP, frame, 120)
+            frame.Destroy()
+            return None
+        
+        try:
+            conn = connect_to_mysql(tunnel)
+        except Exception as e:
+            logger.error("Error connecting to MySQL server:", str(e))
+            frame = wx.Frame(None)
+            wx.MessageBox("Error connecting to websites database", "Error!", wx.OK|wx.ICON_INFORMATION|wx.STAY_ON_TOP, frame, 120)
+            frame.Destroy()
+            
+            tunnel.close()
+            
+            return None
+
+        # Call the function and store the result
+        result = func(conn, *args, **kwargs)
+
+        # Close MySQL connection
+        conn.close()
+        tunnel.close()
+
+        # Return the result
+        return result
+
+    return wrapper
+
+
+def connect_to_mysql(tunnel):
+    # Connect to a MySQL server using the SSH tunnel connection
+    try:
+        conn = mysql.connector.MySQLConnection(
+        host = '127.0.0.1',
+        user = 'examwfgd_crawls',
+        passwd = 'incorrect0727531915',
+        db = 'examwfgd_crawls',
+        port=tunnel.local_bind_port,
+        use_pure=True,
+        charset='utf8',
+        use_unicode=True
+    )
+    except Exception as e:
+        
+        logger.error(f"A connection error has occured", str(e))
+        raise e
+    
+        
+    else:
+        logger.info("Successfully connected to remote database")
+    
+    return conn
+
+
 
 class Db(object):
     """Db access class
@@ -151,6 +244,49 @@ class Db(object):
         self.logger.info("Fetched %s posts", fetched_posts)
         cursor.close()
         return results
+    
+
+    ####-----------------------------------------------------------------
+    @db_connection
+    def update_all_tables_word_count(conn, self, window):
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SHOW TABLES Like '%_content'")
+        
+
+        tables = [table['Tables_in_{} (%_content)'.format(conn.database)] for table in cursor.fetchall()]
+
+
+        for table in tables:
+            self.update_gui(window, f"Attempting to update table {table}")
+            query = f"UPDATE {table} SET content_length = LENGTH(trim(rtrim(content))) - LENGTH(trim(rtrim(REPLACE(content, ' ', ''))))"
+            self.logger.info(query)
+            self.update_gui(window, f"Executing...{query}")
+            try:
+                cursor.execute(query)
+                #results = cursor.fetchall()
+            except Exception as e:
+                self.logger.error("Unable to update", str(e))
+                updated_posts = 0
+            else:
+                # get the results as a python dictionary
+                updated_posts = cursor.rowcount
+        self.logger.info("Updated %s posts", updated_posts)
+        self.update_gui(window, f"Updated {updated_posts} posts")
+        cursor.close()
+        self.update_gui(window, f"**Completed execution")
+        return updated_posts
+    
+    def update_gui(self, window, msg):
+        wx.CallAfter(window.log_message_to_txt_field,msg)
+
+
+    def update_new_tables_word_count(self):
+        cursor = self.conn.cursor(dictionary=True)
+
+
+
+
         
         
     
@@ -529,27 +665,40 @@ class Db(object):
         return results
 
     ####----------------------------------------------------
-    def fetch_all_posts_from_table(self, no_of_posts = None, offset = None,  table_name = None, content_length = None):
+    ## Launch query in thread
+    def launch_query_thread(self, no_of_posts = None, offset = None,  table_name = None, content_length = None):
+        # Launch seperate thread for query
+        thread = threading.Thread(target=self.fetch_all_posts_from_table, args = (no_of_posts,offset, table_name, content_length))
+        thread.start()
+
+
+
+
+
+    # decorate function
+    @db_connection
+    def fetch_all_posts_from_table(remote_conn, self, no_of_posts = None, offset = None,  table_name = None, content_length = None):
+
+        if remote_conn is None:
+            return None
 
         #create cursor object
-        cursor = self.conn.cursor(dictionary=True)
+        cursor = remote_conn.cursor(dictionary=True)
 
        
         no_of_posts = int(no_of_posts)
 
-        query = "select link_no, title, content, content_length, category from " + table_name + " where LENGTH(trim(rtrim(content))) - LENGTH(trim(rtrim(REPLACE(content, ' ', '')))) > {content_length} ORDER BY date_recorded asc limit %s offset {offset} ".format( offset = offset, content_length = content_length)
-
-        self.logger.info(f"[{query}]")
+        query = "select link_no, title, content, content_length, category from " + table_name + " where content_length > {content_length} ORDER BY date_recorded asc limit %s offset {offset} ".format( offset = int(offset), content_length = int(content_length))
         
-        self.logger.info((query + ' '+str(no_of_posts)) )
+        self.logger.info((query + ' '+str(int(no_of_posts))) )
 
         try:
             cursor.execute(query, (no_of_posts,))
             results = cursor.fetchall()
             fetched_posts = cursor.rowcount
 
-        except Exception:
-            self.logger.debug("[ERROR STRING]:%s", cursor._last_executed)
+        except Exception as e:
+            self.logger.debug("[ERROR STRING]:%s", str(e))
             fetched_posts = 0
 
         self.logger.debug("%s fetched from table %s", fetched_posts, table_name)
@@ -567,7 +716,7 @@ class Db(object):
 
        
 
-        query = "select count(*) as count from " + table_name + " where LENGTH(trim(rtrim(content))) - LENGTH(trim(rtrim(REPLACE(content, ' ', '')))) > {content_length} ".format(  content_length = content_length)
+        query = "select count(*) as count from " + table_name + " where content_length > {content_length} ".format(  content_length = content_length)
 
         self.logger.info(f"[{query}]")
 
@@ -606,3 +755,4 @@ class Db(object):
         self.tunnel.close()
 
     
+

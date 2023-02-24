@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import delete
 from sqlalchemy.sql.expression import func, select
 from sqlalchemy import exc
-from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process, TitleLength, ContentLength, WebsiteSettings, References
+from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, ShortPosts, Process, TitleLength, ContentLength, WebsiteSettings, References, QuestionSettings
 
 def get_connection(database_url):
     return create_engine(database_url, echo=False, connect_args={'check_same_thread': False})
@@ -228,6 +228,32 @@ def save_website_records(engine, website_details):
         website_record = WebsiteSettings(
             website_name = website_details['website_name'],
             ssh_host = website_details['ssh_host'],
+            ssh_port = website_details['ssh_port'],
+            cpanel_username = website_details['cpanel_username'],
+            ssh_password = website_details['ssh_password'],
+            database_username = website_details['database_username'],
+            database_password = website_details['database_password'],
+            database_name = website_details['database_name'],
+            table_prefix = website_details['database_prefix'],
+            security_filepath = website_details["security_filepath"],        
+        )
+        
+        session.add(website_record)
+        try:
+            session.commit()
+        except Exception as e:
+            raise
+        else:
+            print("Records saved successfully")
+            return True
+        
+def save_question_website_records(engine, website_details):
+
+    with create_threaded_session(engine) as session:
+        website_record = QuestionSettings(
+            database_connection_name = website_details['database_connection_name'],
+            ssh_host = website_details['ssh_host'],
+            ssh_port = website_details['ssh_port'],
             cpanel_username = website_details['cpanel_username'],
             ssh_password = website_details['ssh_password'],
             database_username = website_details['database_username'],

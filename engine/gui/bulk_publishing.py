@@ -7,18 +7,29 @@ import string
 import wx.adv
 import wx.html
 import wx.lib.inspection
+import queue
 import logging
 import threading
 import time
 import datetime
 from datetime import datetime, timedelta
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from engine.cleaner import Cleaner
 from queue import Queue
 from datetime import date
 from sys import maxsize
 from engine.db_remote_ssh import Db as questions_db
+from engine.models import BannedStrings, PublishedPosts, ProcessingPosts, Base
+from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts, get_content_length, set_content_length, delete_all_tables, save_references_to_db
+
+
+
+
 
 from engine.local_db import connect_to_db, create_session, get_banned_strings, add_banned_string, delete_banned_string, save_website_records, get_website_records, fetch_connection_details
+
+SENTINEL = object()
 
 from engine.db_remote import Db
 
@@ -36,12 +47,17 @@ class BulkPublishingFrame(wx.Frame):
 
         self.filename = ""
 
-        db = questions_db(self.logger)
-        db.start_conn()
+        self.db = questions_db(self.logger)
+        self.db.start_conn()
 
-        tables_summary = db.fetch_total_tables_summary()
+        tables_summary = self.db.fetch_total_tables_summary()
 
-        self.createPanel(tables_summary, website_records, db)
+        self.db.close_conn()
+
+        
+
+
+        self.createPanel(tables_summary, website_records, self.db)
 
 
         #--------------------------------
@@ -53,8 +69,14 @@ class BulkPublishingFrame(wx.Frame):
         self.SetSizer(self.box_sizer)
         self.Layout()
 
+
+    
+
     def OnCloseWindow(self, event):
         self.Destroy()
+
+
+
 
 
 
@@ -79,6 +101,15 @@ class BulkPublishingPanel(wx.Panel):
 
         self.cleaner = Cleaner()
 
+        self.delay = 5
+
+        self.threads_per_batch = 10
+
+        self.question_load = 700
+
+        self.order_queue = Queue()
+        self.quit_event = threading.Event()  
+
                       
         self.layout()
 
@@ -95,7 +126,7 @@ class BulkPublishingPanel(wx.Panel):
 
         batch_size_lbl = wx.StaticText(self, -1, "Batch Size")
         self.offset_combo_box = wx.ComboBox(self,-1,value="None", choices = ['100','1000','10000', '100000','200000','300000','500000'])
-        self.offset_combo_box.SetValue('1000')
+        self.offset_combo_box.SetValue('200000')
 
         content_size_lbl = wx.StaticText(self, -1, "Min content size:")
         self.content_length_combo_box = wx.ComboBox(self,-1,value="None", choices = ['100','80','75','60','50', '40','30','20'])
@@ -297,7 +328,9 @@ class BulkPublishingPanel(wx.Panel):
                 self.body_length_value.SetValue(str(content_length))
 
 
+                self.db.start_conn()
                 available_posts = self.db.fetch_available_posts(table_name, content_length)
+                self.db.close_conn()
                 remainder_posts = available_posts[0]['count'] % batch_size
 
                 choices = {}
@@ -494,8 +527,11 @@ class BulkPublishingPanel(wx.Panel):
         table_name = self.table_name_choosen[0]
         batch_size = self.table_name_choosen[1]
 
+        workload = []
+
 
         offset = int(self.database_choosen[table_name][offset_choosen[0]]) * batch_size
+        self.logger.info("Initial offset {offset}")
 
         for website in self.website_records:
 
@@ -521,40 +557,98 @@ class BulkPublishingPanel(wx.Panel):
             self.update_gui(f"[{no_of_questions_per_db}] Posts fetched from each database")
 
             questions_fetched = 0
+            questions_remaining = no_of_questions_per_db
             
-            while no_of_questions_per_db > 0:
+            while questions_remaining > 0:
 
                 
                 
-                if no_of_questions_per_db > 1000:
-                    limit = 1000
+                if questions_remaining > self.question_load:
+                    limit = self.question_load
                 else:
-                    limit = no_of_questions_per_db
-                    
-                posts = self.db.fetch_all_posts_from_table( no_of_posts = limit, offset= offset, table_name = table_name, content_length = settings['body_length'])
+                    limit = questions_remaining
+
+
+                thread = threading.Thread(target=self.process_posts_table_thread, args = (limit, offset, table_name, settings['body_length'], settings, website, self.quit_event, self.order_queue))
+                workload.append(thread)
+
+                offset = offset + limit
 
                 questions_fetched = questions_fetched + limit
-                no_of_questions_per_db = no_of_questions_per_db - questions_fetched
+                self.logger.info(f"{questions_fetched} questions fetched in total")
+                self.update_gui(f"{questions_fetched} prepared for processing")
+                questions_remaining = questions_remaining - limit
+                self.logger.info(f"{questions_remaining} questions remaining")
+                self.update_gui(f"{questions_remaining} remaining")
 
-                self.logger.info(f"{len(posts)} questions fetched")
-                self.update_gui(f"{len(posts)} questions fetched")
+            job_length = len(workload)
 
-                # itearate through posts
-                processed_posts = self.process_posts(posts, settings, website)
-                self.update_gui(f"{len(processed_posts)} questions cleaned and processed")
+            self.logger.info(workload)
+
+            
+
+            
+            num_batches = job_length // self.threads_per_batch
+
+            with ThreadPoolExecutor(max_workers=self.threads_per_batch) as executor:
+                remote_thread = False
+
+                
+
+                task_queue = queue.Queue()
+                for i, t in enumerate(workload):
+                    task_queue.put(t)
+
+                futures = []
+                batch_counter = 0
+                while not task_queue.empty():
+                    batch = []
+                    for _ in range(min(task_queue.qsize(), self.threads_per_batch - len(futures))):
+                        batch.append(task_queue.get())
+
+                    self.update_gui(f"Running batch {batch_counter + 1}")
+                    self.logger.info(f"Running batch {batch_counter + 1}")
+
+                    for t in batch:
+                        self.update_gui(f"Fetching questions for task {t.name}")                     
+                        
+                        futures.append(executor.submit(t.start))
+                        self.update_gui(f"Pausing for {self.delay} seconds")
+                        time.sleep(self.delay)
+
+                    for future in concurrent.futures.as_completed(futures):
+                        future.result()
 
 
-                # start connection to remote db
+                    futures.clear()
+ 
 
+                    for i,t in enumerate(batch):
+                        self.update_gui(f"Waiting for batch {[batch_counter]}: Thread no {i}-{t.name} to complete...")
+                        self.logger.info(f"Waiting for batch {[batch_counter]}: Thread no {i}-{t.name} to complete...")
+                        t.join()
 
+                    if not remote_thread:
+                        remote_db_thread = threading.Thread(target=self.insert_posts, args = (self.quit_event, self.order_queue, workload))
+                        remote_db_thread.daemon = True # Set the thread as a daemon, if necessary
+                        remote_db_thread.priority = 8
+                        remote_db_thread.start()
+                        remote_thread = True
 
-                self.publish_to_remote(processed_posts)
-                self.update_gui(f"{len(processed_posts)} posted to [{website}] database")
+                    
 
-        if self.remote_database.connection:
-            self.remote_database.mysql_disconnect()
-        self.update_gui(f"Completing execution")
-        self.update_gui("--------------End--------------")
+                    self.update_gui(f"Ending batch {batch_counter + 1}")
+                    self.logger.info(f"Ending batch {batch_counter + 1}")
+                    batch_counter = batch_counter + 1
+                
+                #self.quit_event.set()
+                
+            self.logger.info("Sending sentinel object....")
+            self.update_gui("Finishing processing.....")
+            self.order_queue.put(SENTINEL)
+            return
+            
+            
 
         # get current position and calculate offset
 
@@ -586,7 +680,9 @@ class BulkPublishingPanel(wx.Panel):
 
     def post_questions(self, settings, tables_choosen):
 
-        self.display_user_settings(settings)       
+        self.display_user_settings(settings)
+
+     
 
         for website in self.website_records:
             
@@ -604,20 +700,28 @@ class BulkPublishingPanel(wx.Panel):
             self.update_gui(f"Begin processing for: [{website}]")
             # get table names
 
-            no_of_questions_per_db = settings['questions'] / len(tables_choosen)
+            no_of_questions_per_db = int(settings['questions'] / len(tables_choosen))
 
             self.logger.info(f"[{no_of_questions_per_db}] Posts fetched from each database")
             self.update_gui(f"[{no_of_questions_per_db}] Posts fetched from each database")
+
+            workload = []
+
+            questions_remaining = int(no_of_questions_per_db)
+            questions_fetched = 0
                    
 
             for table in tables_choosen:
                 offset = 0
                 
-                while offset < no_of_questions_per_db:
-                    questions_remaining = no_of_questions_per_db - offset
-                    self.logger.info(f"[{questions_remaining}] Posts fetched from each iteration")
-                    if questions_remaining > 1000:
-                        limit = 1000
+                while questions_remaining > 0:
+                    
+                    self.logger.info(f"[{questions_remaining}] Questions remaining to be published")
+
+                                     
+
+                    if questions_remaining > self.question_load:
+                        limit = self.question_load
                     else:
                         limit = questions_remaining
 
@@ -627,30 +731,180 @@ class BulkPublishingPanel(wx.Panel):
                         body_length = 35
                     else:
                         body_length = settings['body_length']
-                        
-                    posts = self.db.fetch_all_posts_from_table( no_of_posts = limit, offset= offset, table_name = table_name, content_length = body_length)
+
+                    questions_remaining = questions_remaining - limit
+
+
+                    thread = threading.Thread(target=self.process_posts_thread, args = (limit, offset, table_name, body_length, settings, website, self.quit_event, self.order_queue))
+                    workload.append(thread)
+
+                    questions_fetched = questions_fetched + limit
+
+                    self.logger.info(f"{questions_fetched} questions fetched in total")
+                    self.update_gui(f"{questions_fetched} prepared for processing")
+                    
+                    self.logger.info(f"{questions_remaining} questions remaining")
+                    self.update_gui(f"{questions_remaining} remaining")
+                                           
+                    
 
                     offset = offset + limit
 
-                    self.logger.info(f"{len(posts)} questions fetched")
-                    self.update_gui(f"{len(posts)} questions fetched")
+            job_length = len(workload)
 
-                    # itearate through posts
-                    processed_posts = self.process_posts(posts, settings, website)
-                    self.update_gui(f"{len(processed_posts)} questions cleaned and processed")
+            self.logger.info(workload)
+            
+
+            
+            if job_length > self.threads_per_batch:
+                num_batches = job_length // self.threads_per_batch
+            else:
+                num_batches = job_length
+
+        self.update_gui(f"Attempting to process workload in {num_batches} batches")
+            
+
+        with ThreadPoolExecutor(max_workers=self.threads_per_batch) as executor:
+            # launch post to remote databse thread
+            remote_thread = False
 
 
-                    # start connection to remote db
+
+            task_queue = queue.Queue()
+            for i, t in enumerate(workload):
+                task_queue.put(t)
+
+            batch_counter = 0
+
+            futures = []
+            while not task_queue.empty() or self.quit_event.isSet():
+                batch = []
+                for _ in range(min(task_queue.qsize(), self.threads_per_batch - len(futures))):
+                    batch.append(task_queue.get())
+
+                self.update_gui(f"Running batch {batch_counter + 1}")
+
+                for t in batch:
+                    self.update_gui(f"Fetching questions for task {t.name}")
+                    
+                    futures.append(executor.submit(t.start))
+                    self.update_gui(f"Pausing for {self.delay} seconds")
+                    time.sleep(self.delay)
+
+                
+
+                for future in concurrent.futures.as_completed(futures):
+                    future.result()
+
+                futures.clear()
+                    
+
+                for i,t in enumerate(batch):
+                    self.update_gui(f"Waiting for batch {[batch_counter]}: Thread no {i}-{t.name} to complete...")
+                    self.logger.info(f"Waiting for batch {[batch_counter]}: Thread no {i}-{t.name} to complete...")
+                    t.join()
+
+                if not remote_thread:
+                    remote_db_thread = threading.Thread(target=self.insert_posts, args = (self.quit_event, self.order_queue, workload))
+                    remote_db_thread.daemon = True # Set the thread as a daemon, if necessary
+                    remote_db_thread.priority = 8
+                    remote_db_thread.start()
+                    remote_db_thread.start()
+                    remote_thread = True
+                    
+                
+
+                self.update_gui(f"Ending batch {batch_counter + 1}")
+                batch_counter = batch_counter + 1
+
+        self.logger.info("Sending sentinel object....")
+        self.update_gui("Finishing processing.....")
+        self.order_queue.put(SENTINEL)
+
+            
 
 
+    def insert_posts(self, quit_event, job_queue, active_threads):
+        while not quit_event.isSet():
+            
 
-                    self.publish_to_remote(processed_posts)
-                    self.update_gui(f"{len(processed_posts)} posted to [{website}] database")
+            self.logger.info("Waiting for queue input")
+            
 
-        if self.remote_database.connection:
-            self.remote_database.mysql_disconnect()
+            if job_queue.empty():
+                time.sleep(5)
+                results = None
+                continue
+            else:
+                results = job_queue.get()
+
+             
+            if results is SENTINEL:
+                # Do any necessary cleanup
+                self.logger.info("Insert thread completed execution - Exiting loop....")
+                self.update_gui(f"Insert thread completed execution - Exiting loop.... ")
+                break
+
+            if results is not None:
+
+
+                self.update_gui(f"Inserting posts {len(results)} into website db ")
+
+                if self.remote_database.bulk_insert_posts(results, window= self):
+                    self.update_gui("Posts have been successfully inserted in the database")
+                else:
+                    self.update_gui("Unable to insert posts in the database")
+
+
         self.update_gui(f"Completing execution")
         self.update_gui("--------------End--------------")
+
+
+
+
+
+    def process_posts_table_thread(self, limit, offset, table_name, body_length, settings, website, quit_event, job_queue ):
+        #time.sleep(self.delay)
+        if not quit_event.isSet():
+
+            posts = self.db.fetch_all_posts_from_table( no_of_posts = limit, offset= offset, table_name = table_name, content_length = settings['body_length'])
+            if posts is None:
+                return None
+
+            
+
+            self.logger.info(f"{len(posts)} questions fetched")
+            self.update_gui(f"{len(posts)} questions fetched")
+
+            # itearate through posts
+            processed_posts = self.process_posts(posts, settings, website)
+            self.update_gui(f"{len(processed_posts)} questions cleaned and processed")
+
+
+            # start connection to remote db
+            job_queue.put(processed_posts)
+
+            return
+
+
+    def process_posts_thread(self, limit, offset, table_name, body_length, settings, website, quit_event, job_queue):
+        if not quit_event.isSet():
+            
+            #time.sleep(self.delay)
+            posts = self.db.fetch_all_posts_from_table( no_of_posts = limit, offset= offset, table_name = table_name, content_length = body_length)
+            if posts is None:
+                return None
+
+            self.logger.info(f"{len(posts)} questions fetched")
+            self.update_gui(f"{len(posts)} questions fetched")
+
+            # itearate through posts
+            processed_posts = self.process_posts(posts, settings, website)
+            self.update_gui(f"{len(processed_posts)} questions cleaned and processed")
+
+            job_queue.put(processed_posts)
+
+            return
 
                     
     
@@ -735,7 +989,7 @@ class BulkPublishingPanel(wx.Panel):
                 
                 #self.logger.info(f"Final clean Title: [{title}] ")
                 #self.logger.info(f"Final clean Content: [{content}] ")
-                self.update_gui(f"Final clean Title: [{title}] ")
+                self.update_gui(f"Final clean Title: [{title[0:85]}] ")
 
                 post_name_title = cleaner.clean_title(title)
 
@@ -753,7 +1007,9 @@ class BulkPublishingPanel(wx.Panel):
 
     def publish_to_remote(self, records_to_update):
         
-        self.remote_database.bulk_insert_posts(records_to_update, window= self)
+        result = self.remote_database.bulk_insert_posts(records_to_update, window= self)
+
+        return result
 
                    
         

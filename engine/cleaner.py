@@ -21,7 +21,7 @@ class Cleaner(object):
         
 
         stop_words = dict.fromkeys(self.banned_strings.stop_words, "")
-        print(stop_words)
+        
 
         # use these three lines to do the replacement
         rep = dict((re.escape(k), v) for k, v in stop_words.items())
@@ -179,12 +179,12 @@ class Cleaner(object):
             
             start = int(random.uniform(0, content_count_length))
 
-            self.logger.info(f"Start Position {start} Title Length {title_length} Content count {content_count_length}")
+            #self.logger.info(f"Start Position {start} Title Length {title_length} Content count {content_count_length}")
             if (start + title_length) > (content_count_length / 2):
                 title = ' '.join(content.split()[-(content_count_length - start + 1) :-title_length])
             else:
                 title = ' '.join(content.split()[start:title_length])
-        self.logger.info(f"Title choosen: {title}")
+        #self.logger.info(f"Title choosen: {title}")
         return title
 
     def add_references_content(self, content):

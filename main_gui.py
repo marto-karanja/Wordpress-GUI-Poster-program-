@@ -179,11 +179,12 @@ class LaunchPanel(wx.Panel):
         # create form sizer
         form_button_sizer = wx.StaticBoxSizer(wx.HORIZONTAL, self, "Add new Website")
 
-        connection_lbl = wx.StaticText(self, -1, "Website")
-        connections = ['Local Host', 'Remote Host']
+        database_connection_name_lbl = wx.StaticText(self, -1, "Connection Name:")
+        self.database_connection_name_value = wx.TextCtrl(self, -1, "Database name")
+        #connections = ['Local Host', 'Remote Host']
 
-        self.connection_combo_box = wx.ComboBox(self, choices=connections, style=wx.CB_DROPDOWN |wx.CB_READONLY)
-        self.connection_combo_box.SetSelection(0)
+        #self.connection_combo_box = wx.ComboBox(self, choices=connections, style=wx.CB_DROPDOWN |wx.CB_READONLY)
+        #self.connection_combo_box.SetSelection(0)
 
         sshLbl = wx.StaticText(self, -1, "SSH Host(IP address):")
         self.ssh_value = wx.TextCtrl(self, -1, "")
@@ -209,8 +210,8 @@ class LaunchPanel(wx.Panel):
         formSizer = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
         formSizer.AddGrowableCol(1)
 
-        formSizer.Add(connection_lbl, 0, wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_CENTER_VERTICAL)
-        formSizer.Add(self.connection_combo_box, 0, wx.EXPAND)
+        formSizer.Add(database_connection_name_lbl, 0, wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_CENTER_VERTICAL)
+        formSizer.Add(self.database_connection_name_value, 0, wx.EXPAND)
         formSizer.Add(sshLbl, 0, wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_CENTER_VERTICAL)
         formSizer.Add(self.ssh_value, 0, wx.EXPAND)
         formSizer.Add(cpanel_username_lbl, 0, wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_CENTER_VERTICAL)
@@ -361,8 +362,9 @@ class LaunchPanel(wx.Panel):
     def saveWebsiteDetails(self, evt):
         # if all form fields have a value
         website_details = {}
-        website_details['website_name'] = self.website_value.GetValue()
+        website_details['database_connection_name'] = self.database_name_value.GetValue()
         website_details['ssh_host'] = self.ssh_value.GetValue()
+        website_details['ssh_port'] = self.ssh_port_value.GetValue()
         website_details['cpanel_username'] = self.cpanel_username_value.GetValue()
         website_details['ssh_password'] = self.ssh_password_value.GetValue()
         website_details['database_username'] = self.database_username_value.GetValue()
@@ -384,7 +386,7 @@ class LaunchPanel(wx.Panel):
         if form_empty:
             wx.MessageBox("Ensure that you have filled all the fields", "Error", wx.ICON_ERROR)
         else:
-            if save_website_records(self.parent.engine, website_details):
+            if save_question_website_records(self.parent.engine, website_details):
                 self.website_value.SetValue("")
                 self.ssh_value.SetValue("")
                 self.cpanel_username_value.SetValue("")

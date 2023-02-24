@@ -14,7 +14,8 @@ from queue import Queue
 from datetime import date
 from sys import maxsize
 from engine.db import Db
-from engine.local_db import connect_to_db, create_session, get_banned_strings, add_banned_string, delete_banned_string, save_website_records, get_website_records, remove_website_records
+from engine.local_db import connect_to_db, create_threaded_session, remove_session, save_published_posts, save_short_posts,get_connection, create_session, fetch_published_posts, update_post, get_title_length, set_title_length, count_published_posts, delete_multiple_posts, fetch_short_posts, delete_multiple_short_posts, get_content_length, set_content_length, delete_all_tables, save_references_to_db, get_website_records, remove_website_records
+from .drip_posting_gui import PostaBotFrame, PostaAbout
 from engine.gui.bulk_publishing import BulkPublishingFrame
 
 class BulkPostsFrame(wx.Frame):
@@ -27,6 +28,10 @@ class BulkPostsFrame(wx.Frame):
         self.logger = logger or logging.getLogger(__name__)
 
         website_records = self.fetch_website_records()
+
+        
+
+        self.createMenuBar()
 
 
 
@@ -61,6 +66,140 @@ class BulkPostsFrame(wx.Frame):
             website_records = get_website_records(self.engine)
             self.logger.info("Fetched %s stopwords successfully", len(website_records))
             return website_records
+        
+    def updateDb(self, event):
+        from .update_db_gui import UpdateDbFrame
+        # launch thread
+
+        frame = UpdateDbFrame(parent=wx.GetTopLevelParent(self), logger = self.logger, title = "Update Database")
+
+        frame.Show(True)
+
+    def menuData(self):
+        return [("&File", (
+
+                    ("About...", "Show about window", self.OnAbout),
+                    ("Manage Banned Strings", "Create/Delete Banned Strings", self.OnManageBanned),
+                    ("Upload References", "Add References", self.UploadReferences),                    
+                    ("&Quit", "Quit", self.OnCloseWindow))
+                ),
+                ("&Bulk Options",(
+                    ("Update Word Count", "Update Db", self.updateDb),            
+                    ("Export Settings", "Export Database", self.OnExport),
+                    ("Import Settings", "Import Database", self.OnImport),
+                ))]
+
+    def createMenuBar(self):
+        menuBar = wx.MenuBar()
+        for eachMenuData in self.menuData():
+            menuLabel = eachMenuData[0]
+            menuItems = eachMenuData[1]
+            menuBar.Append(self.createMenu(menuItems), menuLabel)
+        self.SetMenuBar(menuBar)
+
+    def createMenu(self, menuData):
+        menu = wx.Menu()
+        for eachItem in menuData:
+            if len(eachItem) == 2:
+                label = eachItem[0]
+                subMenu = self.createMenu(eachItem[1])
+                menu.AppendMenu(wx.NewId(), label, subMenu)
+            else:
+                self.createMenuItem(menu, *eachItem)
+        return menu
+
+    def createMenuItem(self, menu, label, status, handler, kind=wx.ITEM_NORMAL):
+        if not label:
+            menu.AppendSeparator()
+            return
+        menuItem = menu.Append(-1, label, status, kind)
+        self.Bind(wx.EVT_MENU, handler, menuItem)
+
+    def OnManageBanned(self, event):
+        from .banned_strings_gui import BannedStringsFrame
+        frame = BannedStringsFrame(parent=wx.GetTopLevelParent(self), title = "Banned Strings")
+        frame.SetWindowStyle(style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
+        frame.Show(True)
+
+    def OnPostReports(self, event):
+        pass
+
+
+
+    #-------------------------------------------------------------------------
+
+
+    def OnExport(self, event):
+        dlg = wx.FileDialog(self, "Export Bot settings to", os.getcwd(), style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT, wildcard=self.wildcard)
+        if dlg.ShowModal() == wx.ID_OK:
+            filename = dlg.GetPath()
+            if not os.path.splitext(filename)[1]:
+                filename = filename + '.bot'
+            self.filename = filename
+            print(self.filename)
+            self.export_database()
+        dlg.Destroy()
+
+    def export_database(self):
+        import sqlite3
+        con = sqlite3.connect('settings.db')
+        with open(self.filename, 'w', encoding="utf-8") as f:
+            for line in con.iterdump():
+                f.write('%s\n' % line)
+        wx.MessageBox("The export has been completed successfully.", caption="Export was successful", style=wx.OK | wx.ICON_INFORMATION)
+
+
+
+    wildcard = "Database files (*.bot)|*.bot|All files (*.*)|*.*"
+    def OnImport(self, event):
+        dlg = wx.FileDialog(self, "Import Bot Settings", os.getcwd(), style=wx.FD_OPEN, wildcard=self.wildcard)
+        
+        if dlg.ShowModal() == wx.ID_OK:
+            self.filename = dlg.GetPath()
+            self.import_database()
+            dlg.Destroy()
+
+    def import_database(self):
+        retCode = wx.MessageBox("Are you sure? This action is irreversible and will erase your current settings", caption="Confirm Import", style=wx.YES_NO | wx.ICON_INFORMATION)
+        if (retCode == wx.YES):
+            import sqlite3
+            
+            con = sqlite3.connect('settings.db')
+            delete_all_tables(con)
+            # delete all tables in the db
+            f = open(self.filename,'r', encoding="utf-8")
+            str = f.read()
+            con.executescript(str)
+            wx.MessageBox("The import has been completed successfully.",caption="Successful import", style=wx.OK| wx.ICON_INFORMATION)
+            
+            return
+
+    
+    def UploadReferences(self, event):
+        wildcard = "Database files (*.csv)|*.csv|All files (*.*)|*.*"
+        dlg = wx.FileDialog(self, "Upload References", os.getcwd(), style=wx.FD_OPEN, wildcard=wildcard)
+        
+        if dlg.ShowModal() == wx.ID_OK:
+            self.references_filename = dlg.GetPath()
+            self.import_references()
+            dlg.Destroy()
+
+    def import_references(self):
+        with open(self.references_filename, 'r') as file:
+            csvreader = csv.reader(file)
+            references = []
+            for row in csvreader:
+                print(row[0])
+                references.append(row[0])
+        if save_references_to_db(self.engine, references):
+            wx.MessageBox("References saved successfully", "Success", wx.ICON_INFORMATION)
+        else:
+            wx.MessageBox("Saving operation failed", "ERROR", wx.ICON_ERROR)
+
+    def OnAbout(self, event):
+        dlg = PostaAbout(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
 
 
@@ -120,6 +259,10 @@ class BulkPostsPanel(wx.Panel):
         sshLbl = wx.StaticText(self, -1, "SSH Host(IP address):")
         self.ssh_value = wx.TextCtrl(self, -1, "")
 
+        sshPortLbl = wx.StaticText(self, -1, "Port:")
+        self.ssh_port_value = wx.ComboBox(parent = self, id = -1, choices = ['22', '21098', '63162'])
+        self.ssh_port_value.SetValue('22')
+
         cpanel_username_lbl = wx.StaticText(self, -1, "Cpanel Username:")
         self.cpanel_username_value = wx.TextCtrl(self, -1, "")
 
@@ -141,10 +284,18 @@ class BulkPostsPanel(wx.Panel):
         formSizer = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
         formSizer.AddGrowableCol(1)
 
+        ssh_port_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
         formSizer.Add(website_lbl, 0, wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL)
         formSizer.Add(self.website_value, 0, wx.EXPAND)
+
+        #ssh_port_sizer.Add(sshLbl, 0, wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL)
+        ssh_port_sizer.Add(self.ssh_value, 0, wx.ALIGN_CENTER_VERTICAL)
+        ssh_port_sizer.Add(sshPortLbl, 0, wx.ALIGN_CENTER_VERTICAL)
+        ssh_port_sizer.Add(self.ssh_port_value, 0, wx.ALIGN_CENTER_VERTICAL)
+
         formSizer.Add(sshLbl, 0, wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL)
-        formSizer.Add(self.ssh_value, 0, wx.EXPAND)
+        formSizer.Add(ssh_port_sizer, 0, wx.EXPAND, border = 5)
         formSizer.Add(cpanel_username_lbl, 0, wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL)
         formSizer.Add(self.cpanel_username_value, 0, wx.EXPAND)
         formSizer.Add(ssh_password_lbl, 0, wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL)
@@ -284,6 +435,7 @@ class BulkPostsPanel(wx.Panel):
         website_details = {}
         website_details['website_name'] = self.website_value.GetValue()
         website_details['ssh_host'] = self.ssh_value.GetValue()
+        website_details['ssh_port'] = self.ssh_port_value.GetValue()
         website_details['cpanel_username'] = self.cpanel_username_value.GetValue()
         website_details['ssh_password'] = self.ssh_password_value.GetValue()
         website_details['database_username'] = self.database_username_value.GetValue()

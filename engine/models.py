@@ -55,6 +55,21 @@ class WebsiteSettings(Base):
     id = Column(Integer, primary_key=True)
     website_name = Column(String, unique=True)
     ssh_host = Column(String)
+    ssh_port = Column(String, server_default='22')
+    cpanel_username = Column(String)
+    ssh_password = Column(String)
+    database_username = Column(String)
+    database_password = Column(String)
+    database_name = Column(String)
+    table_prefix = Column(String)
+    security_filepath = Column(String)
+
+class QuestionSettings(Base):
+    __tablename__ = 'Question Settings'
+    id = Column(Integer, primary_key=True)
+    database_connection_name = Column(String, unique=True)
+    ssh_host = Column(String)
+    ssh_port = Column(String, server_default='22')
     cpanel_username = Column(String)
     ssh_password = Column(String)
     database_username = Column(String)
